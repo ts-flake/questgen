@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets — API keys / tokens (NEVER commit)
+config/*_key.txt
+config/mineru_token.txt
+config/*.key
+
+# Your question sources + generated worksheets (local data, not code)
+content/
+outputs/
+
+# Pipeline-built database
+*.sqlite
+*.db

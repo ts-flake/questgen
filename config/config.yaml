@@ -1,0 +1,56 @@
+# questgen configuration
+# API keys are NOT stored here — leave api_key empty and either enter keys in the
+# dashboard (⚙ Settings), or drop them into the gitignored files under config/.
+
+content_root: content            # where your question sources live (relative to the repo root)
+
+# Closed vocabulary of problem types (used for tagging + AI generation).
+# Editable in the dashboard ⚙ Settings → Question types.
+problem_types: [mcq, short_answer, structured, word_problem]
+
+# Default source coordinates when none is selected (the dashboard discovers real ones).
+defaults:
+  subject: math
+  stage: primary
+  level: p6
+  source: ""
+
+# MinerU — cloud PDF extraction service (https://mineru.net). Needs an API token.
+mineru:
+  token_file: config/mineru_token.txt   # put your token here (gitignored), or use the dashboard
+
+# LLM — OpenAI-compatible text endpoint for the "clean" step (DeepSeek / DashScope / Ollama / …).
+# Without a key (and not a localhost endpoint) the clean step is skipped.
+llm:
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  api_key: ""                    # leave empty; put the key in config/llm_key.txt (gitignored)
+  key_file: config/llm_key.txt
+  temperature: 0.0
+  thinking: false
+  max_context_chars: 6000
+
+# VLM — optional multimodal endpoint that reads page images during clean (for figure questions).
+# Leave model empty to fall back to the text-only llm endpoint above.
+vlm:
+  base_url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  model: ""
+  api_key: ""                    # optional; config/vlm_key.txt (gitignored), else falls back to llm key
+  key_file: config/vlm_key.txt
+  temperature: 0.0
+  thinking: false
+  dpi: 130
+
+# gen — OpenAI-compatible endpoint for AI question generation (uses the bank as few-shot corpus).
+gen:
+  base_url: "https://api.deepseek.com"
+  model: "deepseek-chat"
+  api_key: ""                    # optional; config/gen_key.txt (gitignored), else falls back to llm key
+  key_file: config/gen_key.txt
+  temperature: 0.7
+  thinking: false
+  max_tokens: 8000
+
+dashboard:
+  host: 127.0.0.1
+  port: 8760

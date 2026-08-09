@@ -1,0 +1,578 @@
+"""M3 v3 (experiment): LLM-driven segmentation, deterministic verbatim assembly.
+
+Format-independent replacement for the regex segmenter. The LLM only LABELS each
+MinerU block with a role (it never rewrites text); a deterministic assembler groups
+blocks between question-start markers and builds entries VERBATIM from the original
+block content. Robust across sources because the model reads meaning ("this starts
+question 1") instead of matching a numbering convention.
+
+Blocks are the atomic unit (verified: MinerU keeps each sentence/equation/figure in
+one block; a single question just spans several blocks). One label per block.
+
+Roles: q (starts a numbered question) | body (stem continuation) | part (sub-part
+(a)/(b)/...) | option (MCQ choice, may be a figure/table) | figure (content diagram)
+| solution (worked answer) | noise (header/footer/instructions/blank).
+
+Answer files (<stem>_ans) are labeled the same way; solutions pair to questions by qno.
+
+CLI: python3 scripts/llm_segment.py --all [--source ...]
+Uses config.yaml `llm:`. QUESTGEN_LLM_MOCK=1 = heuristic labels (no API), for plumbing.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+from pathlib import Path
+
+import context
+import interim_build as ib
+import llm_clean
+
+CHUNK = 90          # blocks per labeling call
+OVERLAP = 6         # carried context blocks between chunks
+PREVIEW = 160       # chars of block text shown to the labeler
+
+SYS_LABEL = """You label blocks of a scanned exam paper by ROLE. You NEVER rewrite or output the text —
+only a role per block index. Read the blocks in order and decide each block's role.
+
+Roles:
+- "section": a section/part heading that groups the questions after it and under which the question
+  numbering (re)starts, e.g. "Section A", "Section B", "Paper 1", "Booklet A", "Part I". NOT a chapter
+  banner or exercise title unrelated to numbering. Give "label" = the heading text (e.g. "Section A").
+- "q": this block STARTS a new numbered question (it contains the question number, e.g. "1", "1.", "Q1").
+- "body": continuation of the CURRENT question's stem (more sentences, equations, given data).
+- "part": starts a sub-part such as (a), (b), (i), (ii). Mark EVERY labelled sub-part as its own
+  "part" block — including the FIRST one "(a)" (do not fold it into the stem/body), and nested
+  "(i)","(ii)" under an "(a)"/"(b)". A structured question typically has several "part" blocks.
+- "option": a multiple-choice option (A/B/C/D or 1/2/3/4), including an option printed as a figure/table.
+- "figure": a diagram/graph/table that is part of the question content (not an option).
+- "solution": worked-solution or answer content.
+- "noise": page header/footer/number, exam rubric/instructions, blank, watermark.
+
+Rules:
+1. Number style varies by paper ("1", "1.", "1)", "Q1"). A sub-step inside a solution like "1." is NOT
+   a question start — judge by meaning and position, not punctuation.
+2. A question of ANY type may have NO printed number (OCR often drops it). Do NOT rely on a number
+   being present. Mark "q" whenever a NEW self-contained question begins — a fresh problem context that
+   does not continue the previous question. Signals of a new question: a new scenario/setup, a shift to
+   an unrelated topic or figure, a fresh "What is...?/Which...?/Find.../Calculate..." after the previous
+   question's answer space or options ended. This applies to multiple-choice, short-answer, structured,
+   and workbook questions alike. Never merge two separate questions into one entry, and never split one
+   question (its sub-parts (a),(b) stay inside the same "q") into several.
+3. Every block gets exactly one role, using the EXACT index shown in [brackets]. Preserve reading order.
+4. For "q" give "label" = the printed question number (digits only), or "" if none is printed.
+   For "part" give "label" = the part marker (e.g. "(a)"). For "option" give "label" = the option
+   key if visible (e.g. "A" or "1"), else "".
+
+OUTPUT: exactly ONE json array, one object per block, no other text:
+[{"i":0,"role":"section","label":"Section A"},{"i":1,"role":"q","label":"1"},{"i":2,"role":"body"},{"i":3,"role":"option","label":"A"}, ...]"""
+
+SYS_ANSWERS = """You are reading the ANSWER KEY of an exam paper. It was machine-OCR'd and may be laid out
+as a table, as double-column text linearized into one stream, or a mix; question numbers may be
+"1", "1.", or "Q1". Produce one clean record per numbered answer.
+
+For each answer:
+- "section": the section/part heading this answer falls under, if the key is grouped by section and the
+  numbering restarts per section — e.g. "Section A", "Paper 1", "Booklet B". Use "" if the key has no
+  section grouping. Carry the same heading forward until a new one appears. If a "CONTEXT:" line below
+  states the section already in effect (the heading is not repeated in this excerpt), use THAT heading
+  for the first answers until a new heading appears in the blocks.
+- "qno": question number as plain digits ("Q1" -> "1"). If an answer has NO printed number (OCR
+  dropped it), infer it from position — the next number after the previous answer.
+- "answer": the final answer(s). For multiple-choice, the option key (A/B/C/D or 1-4). Otherwise the
+  final numeric/expression result. If the question has MULTIPLE PARTS (a),(b),(i)... capture EVERY
+  part's answer, labelled, e.g. "(a) $5$; (b)(i) $12\\,\\mathrm{N}$; (b)(ii) $3.0$". Do NOT return only
+  one part's answer. Wrap latex in $...$. Use "" only if there is genuinely no final answer.
+- "solution": the working/explanation, faithful to the source (do not invent), latex wrapped in $...$,
+  HTML <table> kept as-is. "" if none.
+- "figs": array of block indices [i] whose blocks are solution figures/diagrams for THIS answer (else []).
+
+Read EVERY block. Do not merge two answers, do not split one. OUTPUT exactly ONE json array, no other text:
+[{"section":"Section A","qno":"1","answer":"D","solution":"...","figs":[]}, {"section":"Section A","qno":"2","answer":"(a) $5$; (b) $9.4$","solution":"...","figs":[5]}]
+"""
+
+
+def compact(blocks: list[dict]) -> str:
+    lines = []
+    for b in blocks:
+        t = b.get("_text") or b.get("text") or ""
+        if b["type"] in ("image",):
+            t = "<figure>"
+        elif b["type"] in ("table", "chart"):
+            t = "<table/chart> " + (b.get("_text") or "")[:60]
+        t = re.sub(r"\s+", " ", t).strip()[:PREVIEW]
+        lines.append(f"[{b['_i']}] ({b['type']}) {t}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- labeling
+
+def _heuristic_labels(blocks: list[dict]) -> dict:
+    """MOCK fallback: bare-number or N. at block start = q; images/tables = figure."""
+    out = {}
+    for b in blocks:
+        t = (b.get("_text") or b.get("text") or "").strip()
+        if b["type"] in ("image",):
+            out[b["_i"]] = {"role": "figure"}
+        elif b["type"] in ("table", "chart"):
+            out[b["_i"]] = {"role": "figure"}
+        elif b["type"] in ("footer", "page_number", "page_footnote", "header"):
+            out[b["_i"]] = {"role": "noise"}
+        elif re.match(r"^\d{1,3}[.\s)]", t):
+            out[b["_i"]] = {"role": "q", "label": re.match(r"^(\d{1,3})", t).group(1)}
+        elif re.match(r"^\([a-z]\)", t):
+            out[b["_i"]] = {"role": "part", "label": t[:3]}
+        else:
+            out[b["_i"]] = {"role": "body"}
+    return out
+
+
+def label_blocks(blocks: list[dict], ep, log=print, cancel=None) -> dict:
+    """Return {block_index: {"role":..., "label":...}} for every block."""
+    if os.environ.get("QUESTGEN_LLM_MOCK") or ep is None:
+        return _heuristic_labels(blocks)
+    sys = SYS_LABEL
+    labels: dict = {}
+    i = 0
+    while i < len(blocks):
+        if cancel is not None and cancel.is_set():
+            break
+        chunk = blocks[max(0, i - OVERLAP):i + CHUNK] if i else blocks[:CHUNK]
+        v = llm_clean.chat(ep, sys, "BLOCKS:\n" + compact(chunk))
+        rows = v if isinstance(v, list) else (v or {}).get("labels") if isinstance(v, dict) else None
+        if not isinstance(rows, list):
+            log(f"  label chunk @{i}: bad response, heuristic fallback for chunk")
+            for b in chunk:
+                labels.setdefault(b["_i"], _heuristic_labels([b])[b["_i"]])
+        else:
+            for r in rows:
+                if isinstance(r, dict) and "i" in r:
+                    labels.setdefault(int(r["i"]), {"role": r.get("role", "body"),
+                                                    "label": r.get("label", "")})
+        i += CHUNK
+    for b in blocks:  # fill any gaps
+        labels.setdefault(b["_i"], {"role": "body"})
+    return labels
+
+
+# ---------------------------------------------------------------- table parsers
+# Options and answer keys are often printed as tables; MinerU emits them as one
+# <table> block. The LLM labels the block (option / solution); these deterministic
+# parsers crack the regular table structure.
+
+def _cells(html: str) -> list[str]:
+    return [re.sub(r"<[^>]+>", " ", c).strip()
+            for c in re.findall(r"<td[^>]*>(.*?)</td>", html, re.S)]
+
+
+def parse_options(text: str) -> dict | None:
+    """A/B/C/D (or 1-4) options from an option block, whether a <table> or inline
+    text like 'A 1.2 B 1.8 C 4.8 D 20'. Returns {key: value} or None."""
+    seq = _cells(text) if "<table" in text else re.split(r"\s+", text.strip())
+    opts, i = {}, 0
+    if "<table" not in text:
+        # inline: walk tokens, a lone key letter starts a value until next key
+        toks = seq
+        cur = None
+        for tok in toks:
+            if re.fullmatch(r"[A-D1-4]", tok) and tok not in opts:
+                cur = tok
+                opts[cur] = ""
+            elif cur:
+                opts[cur] = (opts[cur] + " " + tok).strip()
+        return opts if len(opts) >= 2 and all(opts.values()) else None
+    while i < len(seq):
+        c = seq[i]
+        m = re.match(r"^([A-D1-4])[\s.)]*(.*)$", c)
+        if m and m.group(1) not in opts:
+            val = m.group(2).strip()
+            if not val and i + 1 < len(seq):
+                val = seq[i + 1]
+                i += 1
+            opts[m.group(1)] = val
+        i += 1
+    if len(opts) < 2:
+        return None
+    # reject degenerate label-only parse (value == its own key, e.g. {"A":"A"}):
+    # the real option values (often display formulas) live in separate blocks;
+    # keep the raw block instead so llm_clean can recover them.
+    if sum(1 for k, val in opts.items() if val.strip() == k) >= len(opts) - 1:
+        return None
+    return opts
+
+
+# ---------------------------------------------------------------- assembly (verbatim)
+
+def _block_by_i(blocks: list[dict]) -> dict:
+    return {b["_i"]: b for b in blocks}
+
+
+def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
+    entries, cur, cur_part, cur_section = [], None, None, ""
+
+    def close():
+        nonlocal cur, cur_part
+        if cur:
+            entries.append(cur)
+        cur, cur_part = None, None
+
+    for b in blocks:
+        role = labels.get(b["_i"], {}).get("role", "body")
+        lab = labels.get(b["_i"], {}).get("label", "")
+        txt = b.get("_text") or ""
+        if role == "noise":
+            continue
+        if role == "section":                          # section heading -> numbering restarts here
+            cur_section = re.sub(r"\s+", " ", (lab or txt)).strip()
+            continue
+        if role == "q":
+            close()
+            # strip a leading question number the labeler identified
+            body = txt
+            m = re.match(r"^\s*" + re.escape(str(lab)) + r"[.)\s]\s*", body) if lab else None
+            if m:
+                body = body[m.end():]
+            elif lab:
+                body = re.sub(r"^\s*\d{1,3}[.)\s]\s*", "", body)
+            cur = {"qno": str(lab or len(entries) + 1), "section": cur_section, "stem": body.strip(),
+                   "parts": [], "options": {}, "assets": [], "solution": [],
+                   "pages": {b["page_idx"]}, "blocks": [b["_i"], b["_i"]], "flags": []}
+            cur_part = None
+            continue
+        if cur is None:
+            continue
+        cur["pages"].add(b["page_idx"])
+        cur["blocks"][1] = b["_i"]
+        is_media = b["type"] in ("image", "table", "chart")
+        # options first: a table/inline that holds A-D is consumed structurally,
+        # its rendered image is redundant (no asset).
+        if role == "option":
+            src = b.get("table_body") or b.get("_text") or txt
+            parsed = parse_options(src)
+            if parsed:
+                cur["options"].update(parsed)
+            else:
+                cur["options"][lab or _next_opt(cur)] = src
+            continue
+        if is_media:
+            # every image/table/chart block carries a rendered img_path -> asset
+            cur["assets"].append({"kind": b["type"], "img_path": b.get("img_path", ""),
+                                  "page_idx": b["page_idx"], "bbox": b.get("bbox")})
+            html = b.get("table_body") or ""
+            line = html if html.strip() else f"![]({b.get('img_path','')})"
+            if cur_part:
+                cur_part["text_md"] += "\n" + line
+            else:
+                cur["stem"] += "\n" + line
+            continue
+        if role == "solution":
+            cur["solution"].append(txt)
+            continue
+        if role == "part":
+            body = re.sub(r"^\s*\(?[a-z]\)?[.)\s]\s*", "", txt) if lab else txt
+            cur_part = {"label": lab or f"({chr(97+len(cur['parts']))})", "text_md": body.strip()}
+            cur["parts"].append(cur_part)
+            continue
+        # body
+        if cur_part:
+            cur_part["text_md"] = (cur_part["text_md"] + "\n" + txt).strip()
+        else:
+            cur["stem"] = (cur["stem"] + "\n" + txt).strip()
+    close()
+    return entries
+
+
+def _next_opt(cur: dict) -> str:
+    n = len(cur["options"]) + 1
+    return "ABCD"[n - 1] if n <= 4 else str(n)
+
+
+def _compact_full(blocks: list[dict]) -> str:
+    """Block listing for answer interpretation — full text/HTML (answers must be
+    read in full, not previewed)."""
+    lines = []
+    for b in blocks:
+        if b["type"] in ("page_number", "footer", "page_footnote"):
+            continue
+        if b["type"] == "image":
+            t = "<figure>"
+        elif b["type"] in ("table", "chart"):
+            t = b.get("table_body") or b.get("_text") or "<figure>"
+        else:
+            t = b.get("_text") or ""
+        lines.append(f"[{b['_i']}] ({b['type']}) {t}")
+    return "\n".join(lines)
+
+
+def _norm_section(s: str) -> str:
+    """Section heading -> comparison key ('Section A' == 'SECTION  A.' == 'section-a')."""
+    return re.sub(r"\W+", "", (s or "")).lower()
+
+
+def interpret_answers(blocks: list[dict], ep, log=print, cancel=None) -> list[dict]:
+    """LLM reads the answer file (ANY layout: table / double-column / mixed / Qn) and
+    returns an ORDERED LIST of {section, qno, answer, solution, figs:[block_i]} in
+    reading order. Records are keyed on (section, qno, answer, solution-prefix) so the
+    chunk OVERLAP re-reads are merged, while GENUINE per-section restarts are kept as
+    separate records (two 'Q7' in different sections, or with different content). Pairing
+    to questions is match_answers' job; figs -> image assets is build_one's."""
+    if os.environ.get("QUESTGEN_LLM_MOCK") or ep is None:
+        return []
+    by_i = {b["_i"]: b for b in blocks}
+    out: list = []
+    seen: dict = {}                                  # dedup key -> index into out
+    cur_section = ""                                 # last heading seen — carried across chunks
+    i = 0
+    while i < len(blocks):
+        if cancel is not None and cancel.is_set():
+            break
+        chunk = blocks[max(0, i - OVERLAP):i + CHUNK] if i else blocks[:CHUNK]
+        # a section heading is printed once at the top of a (possibly long) section; later
+        # chunks don't contain it, so tell the LLM which section is already in effect.
+        ctx_note = (f'CONTEXT: the section heading in effect before the blocks below (not '
+                    f'repeated in this excerpt) is "{cur_section}". Use it until a new '
+                    f'heading appears.\n\n') if cur_section else ""
+        v = llm_clean.chat(ep, "", SYS_ANSWERS + "\n" + ctx_note + "BLOCKS:\n" + _compact_full(chunk))
+        rows = v if isinstance(v, list) else None
+        if not rows:
+            log(f"  answer chunk @{i}: bad response")
+        else:
+            for r in rows:
+                if not isinstance(r, dict) or not r.get("qno"):
+                    continue
+                qno = re.sub(r"\D", "", str(r["qno"])) or str(r["qno"])
+                section = re.sub(r"\s+", " ", str(r.get("section") or "")).strip()
+                if section:
+                    cur_section = section            # remember for the next chunk
+                answer = str(r["answer"]) if r.get("answer") else None
+                sol = str(r.get("solution") or "").strip()
+                figs = [fi for fi in (r.get("figs") or []) if isinstance(fi, int) and fi in by_i]
+                # dedup: within a real section (section,qno) is unique, so overlap re-reads
+                # collapse even when the LLM reformats them between chunks (escaped $, ; vs
+                # \n, extra steps). Without a section, keep content in the key so genuine
+                # un-headed restarts (two different 'Q7') survive.
+                key = (_norm_section(section), qno) if section else ("", qno, (answer or "")[:40], sol[:60])
+                if key in seen:                       # overlap re-read -> merge into existing
+                    rec = out[seen[key]]
+                    if answer and not rec["answer"]:
+                        rec["answer"] = answer
+                    if len(sol) > len(rec["solution"]):   # keep the richer (longer) read
+                        rec["solution"] = sol
+                    rec["figs"].extend(fi for fi in figs if fi not in rec["figs"])
+                    continue
+                seen[key] = len(out)
+                out.append({"section": section, "qno": qno, "answer": answer,
+                            "solution": sol, "figs": figs})
+        i += CHUNK
+    return out
+
+
+def match_answers(questions: list[dict], answers: list[dict]) -> list:
+    """Pair each question (reading order) with one answer record, cascade-free.
+    Pass 1: exact (section, qno) when the question carries a section heading.
+    Pass 2: occurrence-order by qno for whatever is left — the i-th remaining 'Q7'
+    question takes the i-th remaining 'Q7' answer. A miss stays local; it never shifts
+    the pairing of later questions the way global renumbering would."""
+    from collections import defaultdict, deque
+    used = [False] * len(answers)
+    result: list = [None] * len(questions)
+    for qi, q in enumerate(questions):               # pass 1: section-exact
+        qs = _norm_section(q.get("section", ""))
+        if not qs:
+            continue
+        for ai, a in enumerate(answers):
+            if used[ai] or _norm_section(a.get("section", "")) != qs:
+                continue
+            if a["qno"] == str(q.get("qno", "")):
+                result[qi] = a
+                used[ai] = True
+                break
+    queues: dict = defaultdict(deque)                # pass 2: occurrence-order by qno
+    for ai, a in enumerate(answers):
+        if not used[ai]:
+            queues[a["qno"]].append(ai)
+    for qi, q in enumerate(questions):
+        if result[qi] is not None:
+            continue
+        dq = queues.get(str(q.get("qno", "")))
+        if dq:
+            result[qi] = answers[dq.popleft()]
+    return result
+
+
+# ---------------------------------------------------------------- answer value
+
+def norm_img_html(s: str) -> str:
+    """MinerU/LLM sometimes emit <img src="x"/>; normalize to our ![](x) marker."""
+    if not s:
+        return s
+    return re.sub(r'<img[^>]*\bsrc=["\']([^"\']+)["\'][^>]*/?>', r'![](\1)', s)
+
+
+def extract_answer(solution: str, options: dict, has_parts: bool = False) -> dict | None:
+    # multi-part questions can't be tail-extracted to a single value — leave to
+    # the answer-key LLM pass / llm_clean; flag as no_answer instead of guessing.
+    if has_parts:
+        return None
+    if not solution:
+        return None
+    m = re.match(r"^\(?([A-D1-4])\)?\b", solution.strip())
+    if m and options:
+        return {"value": m.group(1), "kind": "mcq_option"}
+    tail = solution.strip().splitlines()[-1] if solution.strip() else ""
+    m = re.search(r"=\s*([^=]{1,40})$", tail)
+    if m:
+        v = m.group(1).strip().strip("$").strip()
+        if v and "$" not in v and re.search(r"\\[a-zA-Z]|\^|_\{", v):
+            v = f"${v}$"
+        if v:
+            return {"value": v, "kind": "tail_extract"}
+    return None
+
+
+# ---------------------------------------------------------------- build
+
+def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
+    blocks = ib.load_blocks(ctx, stem)
+    labels = label_blocks(blocks, ep, log=log, cancel=cancel)
+    unknown = sorted({b["_unknown_type"] for b in blocks if b.get("_unknown_type")})
+
+    # answers: separate _ans file interpreted by the LLM (any layout);
+    # figs are block indices -> resolve to image assets deterministically.
+    answers: list = []
+    ans_by_i: dict = {}
+    if (ctx.extracted_dir / f"{stem}_ans").is_dir():
+        ablocks = ib.load_blocks(ctx, f"{stem}_ans")
+        ans_by_i = {b["_i"]: b for b in ablocks}
+        answers = interpret_answers(ablocks, ep, log=log, cancel=cancel)
+
+    raw = assemble_questions(blocks, labels)
+    # layered pairing: (section, qno) exact, else same-qno occurrence order. Handles
+    # per-section number restarts without the old "merge both Q7, hope clean prunes".
+    matched = match_answers(raw, answers)
+    out_rows = []
+    for idx, e in enumerate(raw):
+        qno = e["qno"]
+        sol_inpaper = "\n".join(e["solution"]).strip()
+        arec = matched[idx] or {}
+        sol = arec.get("solution") or sol_inpaper or None
+        opts = {k: v for k, v in e["options"].items()} or None
+        if arec.get("answer"):
+            ans = {"value": arec["answer"], "kind": "answer_key"}
+        else:
+            ans = extract_answer(sol or "", opts or {}, has_parts=bool(e["parts"]))
+        # solution figures: LLM gave block indices; take verbatim bbox/provenance
+        ans_imgs = []
+        for fi in arec.get("figs", []):
+            b = ans_by_i.get(fi)
+            if b and b.get("img_path"):
+                ans_imgs.append({"kind": b["type"], "path": b["img_path"], "src": "ans",
+                                 "page": b["page_idx"], "bbox": b.get("bbox")})
+        row = {
+            "qid": f"{stem}-{len(out_rows)+1:03d}",
+            "kind": "mcq" if opts else "question",
+            "stem": norm_img_html(e["stem"].strip()),
+            "parts": [{"no": p["label"], "text": norm_img_html(p["text_md"].strip())} for p in e["parts"]],
+            "options": opts,
+            "answer": ans,
+            "solution": norm_img_html(sol) if sol else sol,
+            "imgs": [{"kind": a["kind"], "path": a["img_path"], "src": "q",
+                      "page": a["page_idx"], "bbox": a["bbox"]} for a in e["assets"]] + ans_imgs,
+            "meta": {"source_id": ctx.source, "subject": ctx.subject, "stage": ctx.stage,
+                     "level": ctx.level, "file": f"raw/{stem}.pdf",
+                     "pages": sorted(e["pages"]), "qno": qno, "section": e.get("section", ""),
+                     "blocks": e["blocks"],
+                     **({"unknown_block_types": unknown} if unknown else {})},
+            "flags": e["flags"],
+        }
+        ib.polish_row(row)
+        ib.validate(row, ctx.extracted_dir / stem)
+        out_rows.append(row)
+
+    report = {
+        "file": stem, "questions": len(out_rows), "engine": "llm_segment",
+        "with_solution": sum(1 for r in out_rows if r["solution"]),
+        "with_answer": sum(1 for r in out_rows if r["answer"]),
+        "mcq": sum(1 for r in out_rows if r["kind"] == "mcq"),
+        "flagged": sum(1 for r in out_rows if r["flags"]),
+        "flags": {},
+    }
+    for r in out_rows:
+        for fl in r["flags"]:
+            report["flags"][fl.split(":")[0]] = report["flags"].get(fl.split(":")[0], 0) + 1
+
+    ctx.interim_dir.mkdir(parents=True, exist_ok=True)
+    with open(ctx.interim_dir / f"{stem}.jsonl", "w", encoding="utf-8") as f:
+        for r in out_rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    (ctx.interim_dir / f"{stem}.report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    # observability: the LLM's structural decisions, so a bad run is inspectable
+    audit = {"mineru_version": ib.mineru_version(ctx, stem),
+             "unknown_block_types": unknown,
+             "question_labels": {str(b["_i"]): labels.get(b["_i"], {}) for b in blocks},
+             "answer_records": [{"section": a["section"], "qno": a["qno"],
+                                 "answer": a["answer"], "figs": a["figs"],
+                                 "solution_len": len(a["solution"])} for a in answers]}
+    (ctx.interim_dir / f"{stem}.segment.log.json").write_text(
+        json.dumps(audit, ensure_ascii=False, indent=1), encoding="utf-8")
+    # reference sidecar: every answer record the LLM parsed from the _ans file, kept
+    # verbatim and in order (section, qno, full text, resolved fig images) so the
+    # dashboard can surface answers the pairing above could NOT attach to a question.
+    if answers:
+        ref = []
+        for a in answers:
+            figs = [ans_by_i[fi]["img_path"] for fi in a.get("figs", [])
+                    if ans_by_i.get(fi) and ans_by_i[fi].get("img_path")]
+            ref.append({"section": a.get("section", ""), "qno": a.get("qno", ""),
+                        "answer": a.get("answer"),
+                        "solution": a.get("solution") or "", "figs": figs})
+        (ctx.interim_dir / f"{stem}.answers.json").write_text(
+            json.dumps(ref, ensure_ascii=False, indent=1), encoding="utf-8")
+    log(f"  {stem}: {report['questions']} questions "
+        f"({report['mcq']} mcq, {report['with_solution']} w/solution, "
+        f"{report['with_answer']} w/answer, {report['flagged']} flagged)")
+    return report
+
+
+def build_files(ctx: context.Ctx, names: list[str], log=print, cancel=None, thinking=None) -> dict:
+    ep = llm_clean.endpoint(thinking)
+    if ep is None and not os.environ.get("QUESTGEN_LLM_MOCK"):
+        log("llm_segment: no LLM endpoint (config.yaml llm:) — cannot segment")
+        return {"ok": [], "failed": {n: "no endpoint" for n in names}}
+    log(f"llm_segment: {ep['model'] if ep else 'MOCK heuristic'}")
+    ok, failed = [], {}
+    for n in names:
+        if cancel is not None and cancel.is_set():
+            break
+        stem = Path(n).stem
+        if stem.endswith("_ans"):
+            continue
+        if not (ctx.extracted_dir / stem).is_dir():
+            log(f"skip (not extracted): {stem}")
+            continue
+        log(f"segment: {stem}")
+        try:
+            build_one(ctx, stem, ep, log, cancel)
+            ok.append(n)
+        except Exception as e:
+            failed[n] = str(e)
+            log(f"  ERROR {stem}: {e}")
+    log(f"segment finished: {len(ok)} ok, {len(failed)} failed {list(failed) or ''}")
+    return {"ok": ok, "failed": failed}
+
+
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("files", nargs="*")
+    ap.add_argument("--all", action="store_true")
+    context.add_ctx_args(ap)
+    a = ap.parse_args()
+    ctx = context.ctx_from_args(a)
+    names = ([p.name for p in sorted(ctx.extracted_dir.iterdir())
+              if p.is_dir() and not p.name.endswith("_ans")] if a.all else a.files)
+    if not names:
+        ap.error("give stems or --all")
+    build_files(ctx, names)

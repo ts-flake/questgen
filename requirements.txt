@@ -1,0 +1,8 @@
+# questgen runtime dependencies (Python 3.10+)
+PyMuPDF>=1.24        # fitz — PDF/image rendering, cropping, page ops
+python-docx>=1.1     # .docx worksheet export
+Pillow>=10.0         # image size probing for docx export
+requests>=2.31       # LLM / MinerU HTTP calls
+PyYAML>=6.0          # config.yaml parsing
+latex2mathml>=3.77   # LaTeX -> MathML (docx OMML math)
+mathml2omml>=0.0.2   # MathML -> OMML (Word-native equations)
