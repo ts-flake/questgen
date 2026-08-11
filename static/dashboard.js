@@ -74,7 +74,7 @@ function applyLang(){
     el.setAttribute('title',LANG==='en'?el.getAttribute('data-en-title'):el._cnt);
   });
   if(typeof tab!=='undefined'){                 // re-render dynamic strings of the open tab
-    if(tab==='bank'){renderBank();renderCart();}
+    if(tab==='bank'){refreshBankFilters(true);renderBank();renderCart();}
     if(tab==='pipe')loadPipe();
     if(tab==='gen')loadPending();
     if(tab==='sources')renderSteps();
@@ -499,7 +499,7 @@ function isRef(qid){return REFS.some(e=>e.qid===qid);}
 function toggleRef(qid){
   const i=REFS.findIndex(e=>e.qid===qid);
   if(i>=0)REFS.splice(i,1); else{const e=BANK.find(x=>x.qid===qid); if(e)REFS.push(e);}
-  renderBank(); if(typeof renderGenRefs==='function')renderGenRefs();
+  refreshCard(qid); if(typeof renderGenRefs==='function')renderGenRefs();   // in-place: no filter depends on ref state
 }
 function clearRefs(){REFS=[];renderBank();renderGenRefs();}
 const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -545,11 +545,26 @@ async function loadBank(){
   try{USAGE=(await J('/api/usage?'+qs())).usage||{}}catch(e){USAGE={}}
   RENDER_N=PAGE;
   try{TAX=await J('/api/taxonomy?'+qs())}catch(e){TAX={}}
+  refreshBankFilters();
+  renderBank();
+  loadBackups();
+}
+// Rebuild the bank filter chrome (file list + topic/type dropdowns + legend) in the CURRENT
+// language. Called by loadBank AND by applyLang, so a language toggle re-translates the
+// T()-built dropdown defaults (which carry no data-en for applyLang to swap). File-checkbox
+// selections are preserved across the rebuild.
+function refreshBankFilters(keep){
+  // keep=true → preserve the current file-checkbox selection (used on a language toggle, same
+  // source). Default (source switch / fresh load) → all files checked. Preserving across a
+  // source switch is wrong: the old source's checked names don't match the new files, which
+  // would leave them all unchecked.
+  const prev=new Set([...document.querySelectorAll('#bkFiles .bkf:checked')].map(c=>c.value));
+  const chk=f=>(!keep||prev.has(f))?' checked':'';
   const files=[...new Set(BANK.map(e=>e.file_stem))];
   $('bkFiles').innerHTML='<h4>'+T('文件','Files')+'</h4>'
     +`<label class="hint" style="display:block;border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:3px"><input type="checkbox" checked onchange="document.querySelectorAll('.bkf').forEach(c=>c.checked=this.checked);renderBank()"> <b>All</b></label>`
     +files.map(f=>
-    `<label class="hint" style="display:block"><input type="checkbox" class="bkf" value="${f}" checked onchange="renderBank()"> ${f}</label>`).join('');
+    `<label class="hint" style="display:block"><input type="checkbox" class="bkf" value="${f}"${chk(f)} onchange="renderBank()"> ${f}</label>`).join('');
   // topic dropdown shows id — name; legend lists all used topics
   const topics=[...new Set(BANK.flatMap(e=>(e.tags&&e.tags.topic)||[]))].sort();
   const types=[...new Set(BANK.map(e=>e.tags&&e.tags.type).filter(Boolean))].sort();
@@ -560,8 +575,6 @@ async function loadBank(){
   const legend=topics.length?`<details style="margin-top:4px"><summary class="hint">${T('topic 图例','topic legend')} (${topics.length})</summary>`
     +topics.map(t=>`<div class="hint" style="padding:1px 0"><b style="color:var(--acc)">${t}</b> ${esc((TAX[t]||{}).name||'')}</div>`).join('')+`</details>`:'';
   $('bkLegend').innerHTML=legend;
-  renderBank();
-  loadBackups();
 }
 async function loadBackups(){
   try{
@@ -633,6 +646,40 @@ function toast(msg){
   t.textContent=msg;t.classList.add('on');
   clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),1800);
 }
+// The card header (badges + action buttons) — no LaTeX lives here, so it can be re-rendered
+// in place without re-typesetting the body (which is what caused the raw-LaTeX flash).
+function cardHeadHtml(e){
+  const isVer=e.flags.includes('verified');
+  const isAI=e.flags.includes('ai_generated');
+  const inCart=inCartE(e);
+  const flags=e.flags.filter(f=>f!=='verified'&&f!=='ai_generated').map(f=>`<span class="fbadge ${/^(llm_patched|rescued|answer_section)/.test(f)?'info':''}">${esc(f)}</span>`).join(' ');
+  const topicNames=(e.tags&&e.tags.topic||[]).map(t=>{const nm=(TAX[t]||{}).name||'';return t+(nm?' ('+nm+')':'');}).join('; ');
+  const tg=e.tags?`<span class="badge" style="background:var(--tag);color:var(--acc)" title="${esc(topicNames)}">${(e.tags.topic||[]).join(',')} · ${e.tags.type||'?'} · ${e.tags.difficulty||'?'}</span>`:'';
+  const mk=(e.meta&&e.meta.marks!=null)?`<span class="badge no">${e.meta.marks} ${T('分','marks')}</span>`:'';
+  const uc=useCount(e.qid);
+  const ub=uc?`<span class="badge" style="background:var(--nobg);color:var(--dim)" title="${T('已用于教学','used in teaching')} ${esc((USAGE[e.qid]||{}).last||'')} · ${esc(((USAGE[e.qid]||{}).titles||[]).join(', '))}">${IC('book')} ${T('已用 '+uc+' 次','used '+uc+'×')}</span>`:'';
+  return `<div class="hd-main"><b>${inCart?IC('check')+' ':''}${e.qid}</b>
+      ${isAI?`<span class="badge" style="background:var(--tag);color:var(--coral)" title="${T('AI 生成','AI generated')}">${IC('sparkles')}AI</span>`:''}
+      ${isVer?`<span class="badge ok" title="${T('已人工验证','human-verified')}">${IC('check')}verified</span>`:''}
+      ${ub}
+      <span class="badge ${e.cleaned?'ok':'no'}">${e.stage||(e.cleaned?'clean':'raw')}</span>
+      <span class="badge no">${e.kind}</span> ${tg} ${mk} ${flags}</div>
+      <div class="hd-act">
+      <button class="${isRef(e.qid)?'refbtn':''}" title="${T('加入/移出 AI 生成参考','add/remove AI-gen reference')}" onclick="toggleRef('${e.qid}')">${IC('clip')}${isRef(e.qid)?T('参考中','ref'):T('AI 参考','AI ref')}</button>
+      <button class="${isVer?'okbtn':''}" title="${T('标记/取消 人工验证','mark/unmark human-verified')}" onclick="toggleVerified('${e.qid}','${e.file_stem}')">${IC('check')}${isVer?T('已验证','verified'):T('验证','verify')}</button>
+      <button onclick="openEdit('${e.qid}')">${IC('edit')}${T('编辑','Edit')}</button>
+      <button class="${inCart?'danger':''}" onclick="${inCart?'delCartQid':'addCart'}('${e.qid}')">${inCart?IC('x')+T('移除','remove'):IC('plus')+T('选题','add')}</button>
+      <button class="danger" title="${T('删除该题 (从所有阶段文件移除)','delete (from all stage files)')}" onclick="delEntry('${e.qid}','${e.file_stem}')">${IC('trash')}</button></div>`;
+}
+// Update ONE card's header + sel/ver classes in place (no innerHTML rebuild of the list, so
+// the already-typeset math in the body is untouched → no re-render flash).
+function refreshCard(qid){
+  const e=BANK.find(x=>x.qid===qid); if(!e)return;
+  const card=$('bankList').querySelector('[data-qid="'+qid+'"]'); if(!card){renderBank();return;}
+  card.classList.toggle('sel',inCartE(e));
+  card.classList.toggle('ver',e.flags.includes('verified'));
+  const hd=card.querySelector('.hd'); if(hd)hd.innerHTML=cardHeadHtml(e);
+}
 function renderBank(){
   const all=bankFiltered();                    // filter once per render (was twice)
   const rows=all.slice(0,RENDER_N);
@@ -647,34 +694,14 @@ function renderBank(){
   // build the whole list as ONE string and assign once: `innerHTML +=` (and reading
   // innerHTML back) re-serialises + re-parses every card — it cost ~300ms per keystroke.
   const html=rows.map(e=>{
-    const isVer=e.flags.includes('verified');
-    const isAI=e.flags.includes('ai_generated');
-    const flags=e.flags.filter(f=>f!=='verified'&&f!=='ai_generated').map(f=>`<span class="fbadge ${/^(llm_patched|rescued|answer_section)/.test(f)?'info':''}">${esc(f)}</span>`).join(' ');
+    const isVer=e.flags.includes('verified'), inCart=inCartE(e);
     const opts=e.options?`<div class="opts">${Object.entries(e.options).map(([k,v])=>`<span class="opt"><b>${esc(optLabel(k))}</b> ${rich(v,e.file_stem)}</span>`).join('')}</div>`:'';
     const parts=renderParts(e.parts,e.file_stem,0);
     const sol=(e.answer||e.solution)?`<details><summary>${T('答案 / 解答','Answer / Solution')}</summary>
         ${e.answer?`<div><b>Ans:</b> ${rich(String(e.answer.value??''),e.file_stem)} <span class="hint">(${e.answer.kind})</span></div>`:''}
         ${e.answer&&e.solution?'<hr>':''}
         ${e.solution?`<div>${rich(e.solution,e.file_stem)}</div>`:''}</details>`:'';
-    const inCart=inCartE(e);
-    const topicNames=(e.tags&&e.tags.topic||[]).map(t=>{const nm=(TAX[t]||{}).name||'';return t+(nm?' ('+nm+')':'');}).join('; ');
-    const tg=e.tags?`<span class="badge" style="background:var(--tag);color:var(--acc)" title="${esc(topicNames)}">${(e.tags.topic||[]).join(',')} · ${e.tags.type||'?'} · ${e.tags.difficulty||'?'}</span>`:'';
-    const mk=(e.meta&&e.meta.marks!=null)?`<span class="badge no">${e.meta.marks} ${T('分','marks')}</span>`:'';
-    const uc=useCount(e.qid);
-    const ub=uc?`<span class="badge" style="background:var(--nobg);color:var(--dim)" title="${T('已用于教学','used in teaching')} ${esc((USAGE[e.qid]||{}).last||'')} · ${esc(((USAGE[e.qid]||{}).titles||[]).join(', '))}">${IC('book')} ${T('已用 '+uc+' 次','used '+uc+'×')}</span>`:'';
-    return `<div class="card ${inCart?'sel':''} ${isVer?'ver':''}" data-qid="${e.qid}"><div class="hd">
-      <div class="hd-main"><b>${inCart?IC('check')+' ':''}${e.qid}</b>
-      ${isAI?`<span class="badge" style="background:var(--tag);color:var(--coral)" title="${T('AI 生成','AI generated')}">${IC('sparkles')}AI</span>`:''}
-      ${isVer?`<span class="badge ok" title="${T('已人工验证','human-verified')}">${IC('check')}verified</span>`:''}
-      ${ub}
-      <span class="badge ${e.cleaned?'ok':'no'}">${e.stage||(e.cleaned?'clean':'raw')}</span>
-      <span class="badge no">${e.kind}</span> ${tg} ${mk} ${flags}</div>
-      <div class="hd-act">
-      <button class="${isRef(e.qid)?'refbtn':''}" title="${T('加入/移出 AI 生成参考','add/remove AI-gen reference')}" onclick="toggleRef('${e.qid}')">${IC('clip')}${isRef(e.qid)?T('参考中','ref'):T('AI 参考','AI ref')}</button>
-      <button class="${isVer?'okbtn':''}" title="${T('标记/取消 人工验证','mark/unmark human-verified')}" onclick="toggleVerified('${e.qid}','${e.file_stem}')">${IC('check')}${isVer?T('已验证','verified'):T('验证','verify')}</button>
-      <button onclick="openEdit('${e.qid}')">${IC('edit')}${T('编辑','Edit')}</button>
-      <button class="${inCart?'danger':''}" onclick="${inCart?'delCartQid':'addCart'}('${e.qid}')">${inCart?IC('x')+T('移除','remove'):IC('plus')+T('选题','add')}</button>
-      <button class="danger" title="${T('删除该题 (从所有阶段文件移除)','delete (from all stage files)')}" onclick="delEntry('${e.qid}','${e.file_stem}')">${IC('trash')}</button></div></div>
+    return `<div class="card ${inCart?'sel':''} ${isVer?'ver':''}" data-qid="${e.qid}"><div class="hd">${cardHeadHtml(e)}</div>
       ${e.stem&&e.stem.trim()?`<div>${rich(e.stem,e.file_stem)}</div>`:''}${opts}${parts}${sol}</div>`;
   }).join('')||`<div class="hint">${T('无匹配条目','No matching entries')}</div>`;
   const more=all.length>rows.length
@@ -699,7 +726,9 @@ function curItem(e){return {s:SRC.subject,t:SRC.stage,l:SRC.level,src:SRC.source
 function sameSrc(it){return it.s===SRC.subject&&it.t===SRC.stage&&it.l===SRC.level&&it.src===SRC.source;}
 function cartIdxE(e){return CART.findIndex(it=>sameSrc(it)&&it.qid===e.qid);}   // current-source lookup
 function inCartE(e){return cartIdxE(e)>=0;}
-function addCart(qid){const e=BANK.find(x=>x.qid===qid); if(e&&!inCartE(e)){CART.push(curItem(e));renderCart();renderBank();}}
+// a cart change only shifts which cards are shown when the cart/usage filter is by-cart
+function cartFilterActive(){const p=$('bkPick')&&$('bkPick').value;return p==='in_cart'||p==='not_in_cart';}
+function addCart(qid){const e=BANK.find(x=>x.qid===qid); if(e&&!inCartE(e)){CART.push(curItem(e));renderCart();cartFilterActive()?renderBank():refreshCard(qid);}}
 // Random pick: draw from the current filter, preferring questions not yet used in real
 // teaching (least-used first, random within a usage tier), then put MCQs at the front —
 // worksheets conventionally open with the multiple-choice section.
@@ -717,14 +746,14 @@ function randPick(){
   if($('optMcqFirst')&&$('optMcqFirst').checked)sortCartMcqFirst();
   renderCart();renderBank();
 }
-function delCart(i){CART.splice(i,1);renderCart();renderBank()}
-function delCartQid(qid){const i=CART.findIndex(it=>sameSrc(it)&&it.qid===qid);if(i>=0){CART.splice(i,1);renderCart();renderBank()}}
+function delCart(i){const it=CART[i];CART.splice(i,1);renderCart();if(cartFilterActive())renderBank();else if(it&&sameSrc(it))refreshCard(it.qid);}
+function delCartQid(qid){const i=CART.findIndex(it=>sameSrc(it)&&it.qid===qid);if(i>=0){CART.splice(i,1);renderCart();cartFilterActive()?renderBank():refreshCard(qid);}}
 async function toggleVerified(qid,stem){
   try{
     const r=await J('/api/toggle_verified?'+qs(),{method:'POST',body:JSON.stringify({qid,file_stem:stem})});
     const e=BANK.find(x=>x.qid===qid);
     if(e){e.flags=(e.flags||[]).filter(f=>f!=='verified'); if(r.verified)e.flags.push('verified');}
-    renderBank();
+    ($('bkFlag')&&$('bkFlag').value)?renderBank():refreshCard(qid);   // flag filter active → visibility may change
   }catch(e){alert(T('验证失败: ','verify failed: ')+e)}
 }
 async function delEntry(qid,stem){
@@ -876,7 +905,7 @@ window.addEventListener('resize',()=>{if($('editModal').classList.contains('on')
 function renderEditForm(){
   const e=EDIT;
   let h=ta(T('题干 stem (可空)','Stem (optional)'),e.stem,2,'stem');
-  h+=`<label>${T('子题 parts (标号用完整路径如 (a)、(b)(i);保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); auto-nested on save)')}</label><div id="edParts"></div>`
+  h+=`<label>${T('子题 parts (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
     +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
   h+=`<label>${T('选项 options (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
   h+=`<label>${T('答案 answer','Answer')}</label><input id="edAns" style="width:100%" value="${esc((e.answer&&e.answer.value)||'')}" onfocus="lastTA=this" oninput="lastTA=this">`;
