@@ -39,6 +39,8 @@ One JSON object per line, UTF-8, no trailing whitespace.
 | `no` | string | ✓ | canonical label, §3.2 |
 | `text` | string | ✓ | |
 | `marks` | number | — | printed marks for this part |
+| `answer` | string | — | **v2**, this part's answer (§4.1) |
+| `solution` | string | — | **v2**, this part's working (§4.1) |
 | `answer_area` | string \| null | — | **v2**, §4 |
 | `children` | array\<Part\> | — | nested sub-parts; absent when none |
 
@@ -128,6 +130,28 @@ is left where it is. So `[ANSWER]` may still appear in `stem`/`text`; the field 
 - Units live **inside** the template string, not in a separate field.
 - Extraction is idempotent, and runs on build **and** on human edit, so the invariant holds for
   hand-written questions too.
+
+### 4.1 Per-part answers
+
+An answer key writes one line per question — `(a) $6:11$; (b) Tank X: 31.2 l` — so the per-part
+structure is present in the string but unusable by anything downstream: the editor shows one box,
+the export prints one blob, and a human re-parses it by eye. That is where most manual effort went.
+
+`interim_build.split_by_parts` cuts the packed answer (and solution) at the printed part markers
+and stores each piece on the part it belongs to, mirroring how `marks` already works. A bare
+`(i)` is read as a child of the `(b)` it follows.
+
+```jsonc
+"parts": [{"no": "(a)", "text": "…", "answer": "$\\frac{3}{10}$ …", "solution": "Area of …"},
+          {"no": "(b)", "text": "…", "answer": "$105\\,\\mathrm{cm}^2$", "solution": "…"}]
+```
+
+- The cut is an **exact partition**: only the markers and the separators between entries are
+  dropped (verified over 346 splits in a real corpus).
+- The entry-level `answer`/`solution` is **regenerated** from the parts, so the summary can never
+  drift from them. Consumers that have not migrated keep working unchanged.
+- A blob with no part markers, or one naming parts that were never segmented, is **left whole** —
+  guessing would attach an answer to the wrong sub-question.
 
 ## 5. Segmentation roles (intermediate, not persisted)
 

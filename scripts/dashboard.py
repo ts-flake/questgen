@@ -219,25 +219,29 @@ def _apply_edit_fields(r: dict, ed: dict) -> None:
     r["options"] = opts or None
     av = (ed.get("answer") or "").strip()
     r["answer"] = {"value": av, "kind": "human"} if av else None
-    # answer_area is a field, and the editor does not surface it yet, so carry the old value
-    # across by part label — a wholesale parts replacement would otherwise drop it silently.
-    def _areas(parts, out=None, pre=""):
+    # Per-part fields the editor does not surface yet (answer_area, and the answer/solution
+    # split out of the key). The editor replaces `parts` wholesale, so carry them across by
+    # part label — otherwise every edit would silently drop them.
+    CARRY = ("answer_area", "answer", "solution")
+
+    def _collect(parts, out=None, pre=""):
         out = {} if out is None else out
         for p in parts or []:
             key = pre + (p.get("no") or "")
-            if p.get("answer_area"):
-                out[key] = p["answer_area"]
-            _areas(p.get("children"), out, key)
+            keep = {k: p[k] for k in CARRY if p.get(k)}
+            if keep:
+                out[key] = keep
+            _collect(p.get("children"), out, key)
         return out
 
-    kept = _areas(r.get("parts"))
+    kept = _collect(r.get("parts"))
     r["parts"] = ib.finalize_parts([p for p in (ed.get("parts") or []) if p.get("text", "").strip()])
 
     def _restore(parts, pre=""):
         for p in parts or []:
             key = pre + (p.get("no") or "")
-            if key in kept and not p.get("answer_area"):
-                p["answer_area"] = kept[key]
+            for k, v in kept.get(key, {}).items():
+                p.setdefault(k, v)
             _restore(p.get("children"), key)
 
     _restore(r["parts"])

@@ -606,6 +606,88 @@ def split_answer_area(text: str) -> tuple[str, str | None]:
     return body, (area or None)
 
 
+_ANS_MARK = re.compile(r"(?:\(\s*[A-Za-z]{1,3}\s*\)|\(\s*\d{1,2}\s*\)){1,3}")
+
+
+def part_paths(parts: list, pre: str = ""):
+    """Canonical full paths of every part, in order: '(a)', '(b)', '(b)(i)', …"""
+    for p in parts or []:
+        key = pre + (p.get("no") or "")
+        yield key
+        yield from part_paths(p.get("children") or [], key)
+
+
+def split_by_parts(text: str, labels: list) -> tuple[dict, str]:
+    """Packed answer/solution -> ({part_path: text}, leading_text).
+
+    An answer key writes one line per question — "(a) $6:11$; (b) Tank X: 31.2 l" — so the
+    per-part structure is present in the string but unusable by anything downstream. This
+    cuts it at the printed part markers, mapping a bare "(i)" onto the "(b)" it follows.
+    Returns ({}, text) when the blob is not a labelled list, which leaves it untouched.
+
+    The result is an exact partition of `text`: only the markers themselves and the
+    separators between entries are dropped."""
+    if not text or not labels:
+        return {}, text
+    known, tops = set(labels), {l for l in labels if l.count("(") == 1}
+    hits, parent = [], ""
+    for m in _ANS_MARK.finditer(text):
+        toks = ["(" + t.strip().lower() + ")"
+                for t in re.findall(r"\(\s*([A-Za-z]{1,3}|\d{1,2})\s*\)", m.group(0))]
+        path = "".join(toks)
+        if path in known:
+            if len(toks) == 1 and path in tops:
+                parent = path
+            hits.append((m.start(), m.end(), path))
+        elif len(toks) == 1 and parent and (parent + path) in known:
+            hits.append((m.start(), m.end(), parent + path))
+    # one marker suffices when the text STARTS with it ("(b) 5"); otherwise require two, so
+    # prose that merely mentions "(a)" is not mistaken for a labelled list.
+    if not hits or (len(hits) < 2 and hits[0][0] != 0):
+        return {}, text
+    out = {}
+    for k, (_s, e, path) in enumerate(hits):
+        end = hits[k + 1][0] if k + 1 < len(hits) else len(text)
+        val = text[e:end].strip().strip(";").strip()
+        if val:
+            out[path] = val
+    return out, text[:hits[0][0]].strip(" ;,\n")
+
+
+def apply_part_answers(row: dict) -> None:
+    """Distribute a packed answer/solution across the parts it names.
+
+    The parts become the place the answer lives (mirroring `marks`); the entry-level value is
+    then regenerated from them so the summary can never drift out of sync with the parts."""
+    labels = list(part_paths(row.get("parts") or []))
+    if len(labels) < 2:
+        return
+    by_path = {}
+
+    def index(parts, pre=""):
+        for p in parts or []:
+            key = pre + (p.get("no") or "")
+            by_path[key] = p
+            index(p.get("children") or [], key)
+
+    index(row.get("parts") or [])
+
+    for field, getter in (("answer", lambda: (row.get("answer") or {}).get("value") or ""),
+                          ("solution", lambda: row.get("solution") or "")):
+        got, lead = split_by_parts(getter(), labels)
+        if not got:
+            continue
+        for path, val in got.items():
+            if path in by_path:
+                by_path[path][field] = val
+        merged = "; ".join(f"{p} {got[p]}" for p in labels if p in got)
+        merged = f"{lead} {merged}".strip() if lead else merged
+        if field == "answer":
+            row["answer"] = dict(row.get("answer") or {}, value=merged)
+        else:
+            row["solution"] = merged
+
+
 def apply_answer_area(row: dict) -> None:
     """Move every trailing answer area (stem + each part, recursively) into `answer_area`."""
     row["stem"], area = split_answer_area(row.get("stem") or "")
@@ -643,6 +725,7 @@ def polish_row(row: dict) -> None:
         row["options"] = {k: normalize_text(v).strip() for k, v in row["options"].items()}
     canon_entry(row)                                 # "(1)" option keys, "(a)" part labels
     apply_answer_area(row)                           # trailing blanks -> answer_area field
+    apply_part_answers(row)                          # packed "(a) …; (b) …" -> per-part answers
     row["meta"]["schema"] = SCHEMA_VERSION
 
 

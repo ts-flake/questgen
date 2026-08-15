@@ -47,6 +47,11 @@ def _materialise(fx: dict, root: Path) -> tuple[context.Ctx, str]:
     d.mkdir(parents=True, exist_ok=True)
     (d / "content_list.json").write_text(
         json.dumps(fx["content_list"], ensure_ascii=False), encoding="utf-8")
+    if fx.get("content_list_ans") is not None:      # build_one only pairs answers when this exists
+        da = ctx.extracted_dir / f"{stem}_ans"
+        da.mkdir(parents=True, exist_ok=True)
+        (da / "content_list.json").write_text(
+            json.dumps(fx["content_list_ans"], ensure_ascii=False), encoding="utf-8")
     return ctx, stem
 
 
@@ -119,11 +124,13 @@ def cmd_add(a) -> int:
         print(f"{log} has no question_labels", file=sys.stderr)
         return 2
     FIXTURES.mkdir(parents=True, exist_ok=True)
+    ans_cl = ib.content_list_path(ctx, f"{a.stem}_ans")
     ansf = ctx.interim_dir / f"{a.stem}.answers.json"
     fx = {"name": a.name, "stem": a.stem,
           "origin": f"{a.subject}/{a.stage}/{a.level}/{a.source}",
           "labels": labels,
           "answers": json.loads(ansf.read_text(encoding="utf-8")) if ansf.is_file() else [],
+          "content_list_ans": json.loads(Path(ans_cl).read_text(encoding="utf-8")) if ans_cl else None,
           "content_list": json.loads(Path(cl).read_text(encoding="utf-8"))}
     (FIXTURES / f"{a.name}.json").write_text(
         json.dumps(fx, ensure_ascii=False, indent=1), encoding="utf-8")
