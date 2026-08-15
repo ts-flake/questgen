@@ -229,7 +229,7 @@ async function openSettings(){
     <div class="row" style="margin-top:5px"><label style="margin:0">temperature <input type="text" data-f="temperature" value="${d.temperature!=null?d.temperature:''}" style="width:56px"></label>
       <label style="margin:0"><input type="checkbox" data-f="thinking" ${d.thinking?'checked':''}> thinking</label></div>
   </div>`;}).join('');
-  const types=`<div class="setSec"><h4>${T('问题类型 problem_types','Problem types')}</h4>
+  const types=`<div class="setSec"><h4>${T('问题类型','Problem types')}</h4>
     <label>${T('逗号分隔 (tag + 生成共用; 仅小写字母/数字/下划线)','comma-separated (used by tag + generation; lowercase a-z0-9_ only)')}</label>
     <input type="text" id="setTypes" value="${esc((r.problem_types||[]).join(', '))}"></div>`;
   $('setBody').innerHTML=`<div id="setTabs" style="display:flex;gap:8px;margin-bottom:4px">
@@ -917,43 +917,44 @@ function renderEditForm(){
   // options), then the answer side — answer, answer area and solution stay contiguous so the
   // three are read and edited together.
 
-  let h=`<label>${T('总分 total marks (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
+  let h=`<label>${T('总分 (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
   const curType=(e.tags&&e.tags.type)||'';
   const legacy=(curType&&!PTYPES.includes(curType))?`<option value="${curType}" selected>${curType} ${T('(旧, 已不在词表)','(legacy, not in vocab)')}</option>`:'';
-  h+=`<label>${T('问题类型 type (tag)','Question type (tag)')}</label><select id="edType" style="width:200px">`
+  h+=`<label>${T('问题类型','Question type (tag)')}</label><select id="edType" style="width:200px">`
     +`<option value=""${curType?'':' selected'}>${T('(未标注)','(untagged)')}</option>`
     +typeOpts(curType)+legacy+`</select>`;
   const curDiff=(e.tags&&e.tags.difficulty)||'medium';
-  h+=`<label>${T('难度 difficulty','Difficulty')}</label><select id="edDiff" style="width:160px">`
+  h+=`<label>${T('难度','Difficulty')}</label><select id="edDiff" style="width:160px">`
     +['basic','medium','advance'].map(d=>`<option value="${d}"${d===curDiff?' selected':''}>${d}</option>`).join('')+`</select>`;
   const curTopics=new Set((e.tags&&e.tags.topic)||[]);
   const tids=Object.keys(TAX||{}).sort();
   const trows=tids.length?tids.map(id=>`<label class="chkrow"><input type="checkbox" class="edtopic" value="${id}"${curTopics.has(id)?' checked':''}><span><b>${id}</b> ${esc((TAX[id]||{}).name||'')}</span></label>`).join(''):`<div class="hint" style="padding:6px">${T('无 taxonomy','no taxonomy')}</div>`;
-  h+=`<label>${T('主题 topic','Topic')}</label><div id="edTopics" class="chklist" style="max-height:150px">${trows}</div>`;
+  h+=`<label>${T('主题','Topic')}</label><div id="edTopics" class="chklist" style="max-height:150px">${trows}</div>`;
 
   h+=hr;
-  h+=ta(T('题干 stem (可空)','Stem (optional)'),e.stem,2,'stem');
+  h+=ta(T('题干 (可空)','Stem (optional)'),e.stem,2,'stem');
   h+=hr;
-  h+=`<label>${T('子题 parts (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
+  h+=`<label>${T('子题 (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
     +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
 
   h+=hr;
-  h+=`<label>${T('选项 options (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
+  h+=`<label>${T('选项 (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
 
   h+=hr;                                   // answer side, kept contiguous
   // When the parts carry answers they are the source of truth and this box is regenerated
   // from them on save — say so instead of silently discarding what was typed here.
   const partAns=(function any(ps){return (ps||[]).some(p=>p.answer||any(p.children));})(e.parts);
-  h+=`<label>${T('答案 answer','Answer')}</label>`
-    +`<textarea id="edAns" rows="1"${partAns?' readonly':''} onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc((e.answer&&e.answer.value)||'')}</textarea>`
-    +(partAns?`<div class="hint" style="margin-top:2px">${T('本题答案存放在各子题中 — 请在上面的子题里填写','this question keeps its answers on the sub-parts — fill them in above')}</div>`:'');
-  h+=`<label>${T('答题区 answer_area (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
+  // the note goes ABOVE the box: it explains why the box is empty before you look at it
+  h+=(partAns?`<div class="hint" style="margin-top:10px">${T('本题答案存放在各子题中 — 请在上面的子题里填写','this question keeps its answers on the sub-parts — fill them in above')}</div>`:'')
+    +`<label${partAns?' style="margin-top:2px"':''}>${T('答案','Answer')}</label>`
+    +`<textarea id="edAns" rows="1"${partAns?' readonly':''} onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc((e.answer&&e.answer.value)||'')}</textarea>`;
+  h+=`<label>${T('答题区 (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
     +`<textarea id="edArea" rows="1" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="[ANSWER] cm^2">${esc(e.answer_area||'')}</textarea>`;
-  h+=ta(T('解答 solution','Solution'),e.solution,3,'solution');
+  h+=ta(T('解答','Solution'),e.solution,3,'solution');
   h+=`<div id="edAnsRef"></div>`;
 
   h+=hr;
-  h+=`<label>${T('图片 (marker 用 ![](path) 引用)','Images (reference with ![](path))')}</label><div id="edImgList"></div>`
+  h+=`<label>${T('图片 (正文中用 ![](path) 引用)','Images (reference with ![](path))')}</label><div id="edImgList"></div>`
     +`<input type="file" id="edUpload" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="uploadImg(this,null)">`
     +`<label for="edUpload" class="btnlike">${IC('upload')}${T('上传新图','upload image')}</label>`;
   $('editLeft').innerHTML=h;
@@ -979,7 +980,7 @@ function locateImg(i){
     if(p>=0){el.focus();el.selectionStart=p;el.selectionEnd=p+marker.length;el.scrollTop=0;autoGrow(el);
       el.style.outline='2px solid var(--acc)';setTimeout(()=>el.style.outline='',1200);return;}
   }
-  $('edMsg').textContent=T('题目文本中未找到该图 marker (点"插入"放入)','Image marker not found in the text (use “insert”)');
+  $('edMsg').textContent=T('题目文本中未找到该图的引用标记 (点"插入"放入)','Image marker not found in the text (use “insert”)');
 }
 function delImg(i){
   const marker='![]('+EDIT.imgs[i].path+')';
@@ -1000,7 +1001,7 @@ async function uploadImg(input,replaceIdx){
       const ta=(lastTA&&$('editLeft').contains(lastTA))?lastTA:$('editLeft').querySelector('[data-k=stem]');
       if(ta){lastTA=ta; editInsert(ta,'![]('+r.path+')');}
     }
-    renderImgs();$('edMsg').textContent=replaceIdx!=null?T('已替换','replaced'):T('已上传并插入 marker','uploaded & inserted marker');
+    renderImgs();$('edMsg').textContent=replaceIdx!=null?T('已替换','replaced'):T('已上传并插入引用标记','uploaded & inserted marker');
   }catch(e){$('edMsg').textContent=T('上传失败: ','Upload failed: ')+e;}
   input.value='';
 }
@@ -1202,7 +1203,7 @@ function renderAnsRef(k){
   const r=ANSREF[+k]||{}, body=$('ansRefBody'); if(!body)return;
   const ro=(lbl,val)=>`<div class="hint" style="margin-top:4px">${lbl}</div>`+
     `<textarea readonly onclick="this.select()" style="width:100%;background:rgba(127,127,127,.08)">${esc(val||'')}</textarea>`;
-  let h=ro('answer', r.answer||T('(无)','(none)'))+ro('solution', r.solution||T('(无)','(none)'));
+  let h=ro(T('答案','Answer'), r.answer||T('(无)','(none)'))+ro(T('解答','Solution'), r.solution||T('(无)','(none)'));
   if((r.figs||[]).length) h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'+
     r.figs.map(p=>`<img src="/api/img?${qs()}&f=${encodeURIComponent(EDIT.file_stem+'_ans/'+p)}" `+
     `style="max-height:72px;border:1px solid var(--line);border-radius:4px;background:#fff">`).join('')+'</div>';

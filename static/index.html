@@ -126,7 +126,7 @@
     </div>
     <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="record as used (real teaching)">记录为已用 (实际教学)</span></label>
     <button onclick="exportDocx()" data-en="Export .docx">导出 .docx</button>
-    <button onclick="markUsed()" style="font-size:11px" data-ic="book"><span data-en="mark used only (no export)">仅标记已用 (不导出)</span></button>
+    <button onclick="markUsed()" data-ic="book" title="只记录使用次数, 不生成文件" data-en-title="record the use count only, no file"><span data-en="Mark used only">仅标记已用</span></button>
     <div id="expMsg" class="hint"></div>
   </div>
 </div>
