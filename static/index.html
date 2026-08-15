@@ -102,7 +102,6 @@
       <button class="danger" onclick="restoreDb()" style="width:100%;margin-top:4px" data-ic="restore"><span data-en="Restore selected">恢复选中备份</span></button>
       <div id="bkupMsg" class="hint" style="margin-top:4px"></div>
     </div>
-    </div>
     <details style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
       <summary class="hint" onclick="setTimeout(loadJournal,0)" data-ic="clock"><span data-en="Edit history (restorable)">编辑历史 (可恢复)</span></summary>
       <div id="bkJournal" class="hint"></div>
@@ -125,6 +124,7 @@
     <div class="row" style="margin-top:4px">
       <button style="flex:1" data-ic="format" onclick="$('expModal').classList.add('on')"><span data-en="Export options…">导出选项…</span></button>
     </div>
+    <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="record as used (real teaching)">记录为已用 (实际教学)</span></label>
     <button onclick="exportDocx()" data-en="Export .docx">导出 .docx</button>
     <button onclick="markUsed()" style="font-size:11px" data-ic="book"><span data-en="mark used only (no export)">仅标记已用 (不导出)</span></button>
     <div id="expMsg" class="hint"></div>
@@ -237,7 +237,7 @@
     <label class="hint"><span data-en="[ANSWER] style">[ANSWER] 样式</span><select id="expBlank" style="width:100%">
       <option value="underscore" data-en="____ underline">____ 下划线</option>
       <option value="dots" data-en=".... dotted">.... 点线</option></select></label>
-    <details><summary class="hint" data-en="Figure/table caption options">图/表标题 (caption) 选项</summary>
+    <div class="hint" style="margin-top:2px" data-en="Figure/table caption options">图/表标题 (caption) 选项</div>
       <label class="hint"><span data-en="Style">样式</span><select id="capStyle" style="width:100%">
         <option value="italic" data-en="italic">斜体</option>
         <option value="bold" data-en="bold">黑体</option>
@@ -253,7 +253,7 @@
         <option value="continuous" data-en="continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
         <option value="none" data-en="no numbering">不编号</option></select></label>
       <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="caption tables too">表格也加 caption</span></label>
-    </details>
+    
     <label class="hint"><span data-en="Answers">答案格式</span><select id="expAnsFmt" style="width:100%">
       <option value="none" data-en="no answers">不含答案</option>
       <option value="end" selected data-en="answers table at end">末尾附答案表格</option>
@@ -262,7 +262,6 @@
     <label class="hint"><input type="checkbox" id="expMarks"> <span data-en="marks column (3rd col shows marks)">分数栏 (第三栏显示分值)</span></label>
     <label class="hint"><input type="checkbox" id="expSections" checked> <span data-en="group by type (Section A/B…, sorted by marks)">按题型分区 (Section A/B…, 区内按分值排序)</span></label>
     <label class="hint"><input type="checkbox" id="expTotal" checked> <span data-en="compute & show total marks">计算并显示全卷总分</span></label>
-    <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="record as used (real teaching)">记录为已用 (实际教学)</span></label>
   </div>
 </div></div>
 <div id="aiModal"><div id="aiBox">
