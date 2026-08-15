@@ -118,6 +118,8 @@ def prefetch(paths, workers: int = 8) -> None:
         list(ex.map(touch, paths))
 
 SCHEMA_VERSION = 2          # interim row contract; see docs/INTERIM_SCHEMA.md
+# per-part fields that are DATA, not derived from text: they must survive re-nesting
+PART_CARRY = ("marks", "answer", "solution", "answer_area")
 
 NOISE_TYPES = {"page_number", "footer", "page_footnote", "header"}
 BOILERPLATE = re.compile(r"^(©|\d{1,4}$|Educational Publishing|Page \d)", re.I)
@@ -448,7 +450,9 @@ def nest_parts(flat: list[dict]) -> list[dict]:
             lvl = len(stack) + 1
             anc = groups[lvl - 1] if lvl - 1 < len(groups) - 1 else ""
             place(lvl, {"no": anc, "text": "", "children": []})
-        place(d, {"no": local_label(no), "text": p.get("text", ""), "children": []})
+        place(d, {"no": local_label(no), "text": p.get("text", ""),
+                  **{k: p[k] for k in PART_CARRY if p.get(k) not in (None, "")},
+                  "children": []})
 
     def prune(n):
         for c in n["children"]:
@@ -548,7 +552,8 @@ def split_inline_parts(flat: list[dict]) -> list[dict]:
             continue
         intro = text[:ms[0].start()].strip()
         if intro:
-            out.append({"no": no, "text": intro})
+            out.append({"no": no, "text": intro,
+                        **{k: p[k] for k in PART_CARRY if p.get(k) not in (None, "")}})
         for i, m in enumerate(ms):
             end = ms[i + 1].start() if i + 1 < len(ms) else len(text)
             seg = text[m.end():end].strip()
@@ -559,7 +564,8 @@ def split_inline_parts(flat: list[dict]) -> list[dict]:
 
 def finalize_parts(flat: list[dict]) -> list[dict]:
     """flat (LLM/segment order) → normalized, inline-split, nested tree with per-part marks."""
-    norm = [{"no": canon_part_no(p.get("no", "")), "text": normalize_text(p.get("text", ""))}
+    norm = [{"no": canon_part_no(p.get("no", "")), "text": normalize_text(p.get("text", "")),
+             **{k: p[k] for k in PART_CARRY if p.get(k) not in (None, "")}}
             for p in flat]
     norm = [p for p in norm if p["text"]]
     tree = nest_parts(split_inline_parts(norm))
@@ -655,10 +661,13 @@ def split_by_parts(text: str, labels: list) -> tuple[dict, str]:
 
 
 def apply_part_answers(row: dict) -> None:
-    """Distribute a packed answer/solution across the parts it names.
+    """Keep the entry-level answer/solution and the per-part ones consistent.
 
-    The parts become the place the answer lives (mirroring `marks`); the entry-level value is
-    then regenerated from them so the summary can never drift out of sync with the parts."""
+    Whichever side carries the information drives the other:
+      * parts already answered (a human edited them) -> regenerate the entry summary;
+      * otherwise a packed "(a) …; (b) …" from the answer key -> cut it onto the parts.
+    The parts are the place an answer lives (mirroring `marks`); the entry value is only ever
+    a generated summary, so the two cannot drift apart."""
     labels = list(part_paths(row.get("parts") or []))
     if len(labels) < 2:
         return
@@ -672,15 +681,21 @@ def apply_part_answers(row: dict) -> None:
 
     index(row.get("parts") or [])
 
-    for field, getter in (("answer", lambda: (row.get("answer") or {}).get("value") or ""),
-                          ("solution", lambda: row.get("solution") or "")):
-        got, lead = split_by_parts(getter(), labels)
-        if not got:
+    for field in ("answer", "solution"):
+        cur = ((row.get("answer") or {}).get("value") if field == "answer"
+               else row.get("solution")) or ""
+        have = {p: by_path[p][field] for p in labels
+                if p in by_path and by_path[p].get(field)}
+        if have:
+            lead = ""                                   # parts win; entry is derived
+        else:
+            have, lead = split_by_parts(cur, labels)
+            for path, val in have.items():
+                if path in by_path:
+                    by_path[path][field] = val
+        if not have:
             continue
-        for path, val in got.items():
-            if path in by_path:
-                by_path[path][field] = val
-        merged = "; ".join(f"{p} {got[p]}" for p in labels if p in got)
+        merged = "; ".join(f"{p} {have[p]}" for p in labels if p in have)
         merged = f"{lead} {merged}".strip() if lead else merged
         if field == "answer":
             row["answer"] = dict(row.get("answer") or {}, value=merged)

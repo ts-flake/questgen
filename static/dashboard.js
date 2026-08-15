@@ -863,7 +863,7 @@ async function restoreJournal(qid,ts){
 }
 // ---------------- entry edit modal
 let EDIT=null, lastTA=null;
-function flatEditParts(parts,pre=''){let out=[];(parts||[]).forEach(p=>{const path=pre+(p.no||'');out.push({no:path,text:p.text||'',marks:p.marks});out=out.concat(flatEditParts(p.children,path))});return out;}
+function flatEditParts(parts,pre=''){let out=[];(parts||[]).forEach(p=>{const path=pre+(p.no||'');out.push({no:path,text:p.text||'',marks:p.marks,answer:p.answer||'',solution:p.solution||'',answer_area:p.answer_area||''});out=out.concat(flatEditParts(p.children,path))});return out;}
 let pdfCur='q';
 let LIVE_ON=true; try{LIVE_ON=localStorage.getItem('qg_livePrev')!=='0';}catch(e){}
 function openEdit(qid){
@@ -914,6 +914,8 @@ function renderEditForm(){
     +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
   h+=`<label>${T('选项 options (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
   h+=`<label>${T('答案 answer','Answer')}</label><input id="edAns" style="width:100%" value="${esc((e.answer&&e.answer.value)||'')}" onfocus="lastTA=this" oninput="lastTA=this">`;
+  h+=`<label>${T('答题区 answer_area (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
+    +`<input id="edArea" style="width:100%" value="${esc(e.answer_area||'')}" placeholder="[ANSWER] cm^2">`;
   h+=`<label>${T('总分 total marks (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
   const curType=(e.tags&&e.tags.type)||'';
   const legacy=(curType&&!PTYPES.includes(curType))?`<option value="${curType}" selected>${curType} ${T('(旧, 已不在词表)','(legacy, not in vocab)')}</option>`:'';
@@ -1001,16 +1003,22 @@ function renderEditParts(){
     <textarea rows="1" style="flex:1" data-f="text" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc(p.text)}</textarea>
     <input class="no" style="width:44px" title="${T('分值','marks')}" placeholder="${T('分','m')}" value="${p.marks!=null?p.marks:''}" data-f="marks">
     <span style="display:flex;flex-direction:column"><button onclick="movePart(${i},-1)" style="padding:0 5px">↑</button><button onclick="movePart(${i},1)" style="padding:0 5px">↓</button></span>
-    <button class="danger" onclick="delPart(${i})">${IC('x')}</button></div>`).join('');
+    <button class="danger" onclick="delPart(${i})">${IC('x')}</button>
+    <div class="epAns">
+      <label>${T('答案','Ans')}</label><input data-f="answer" value="${esc(p.answer||'')}" placeholder="${T('该子题答案','answer for this part')}">
+      <label>${T('答题区','Area')}</label><input data-f="answer_area" value="${esc(p.answer_area||'')}" placeholder="[ANSWER] cm^2">
+      <label>${T('解答','Sol')}</label><input data-f="solution" value="${esc(p.solution||'')}" placeholder="${T('该子题解答','working for this part')}">
+    </div></div>`).join('');
   $('edParts').querySelectorAll('textarea').forEach(autoGrow);
 }
 function collectParts(){
   const rows=[...$('edParts').querySelectorAll('.epRow')];
-  return rows.map(r=>({no:r.querySelector('[data-f=no]').value.trim(),
+  const v=(r,f)=>{const el=r.querySelector(`[data-f=${f}]`);return el?el.value.trim():'';};
+  return rows.map(r=>({no:v(r,'no'),
     text:r.querySelector('[data-f=text]').value,
-    marks:r.querySelector('[data-f=marks]').value.trim()}));
+    marks:v(r,'marks'),answer:v(r,'answer'),solution:v(r,'solution'),answer_area:v(r,'answer_area')}));
 }
-function addPart(){EDIT._pf=collectParts().concat([{no:'',text:'',marks:''}]);renderEditParts();}
+function addPart(){EDIT._pf=collectParts().concat([{no:'',text:'',marks:'',answer:'',solution:'',answer_area:''}]);renderEditParts();}
 function delPart(i){const f=collectParts();f.splice(i,1);EDIT._pf=f;renderEditParts();}
 function movePart(i,d){const f=collectParts();const j=i+d;if(j<0||j>=f.length)return;[f[i],f[j]]=[f[j],f[i]];EDIT._pf=f;renderEditParts();}
 // Option labels are stored canonically as "(1)".."(n)" (the bank's one internal format);
@@ -1197,13 +1205,15 @@ async function saveEdit(){
   const stripMk=t=>t.replace(/\s*\[\s*\d{1,2}\s*\]\s*$/,'');
   // marks: fold the per-part marks input back into text as [N] (pipeline re-extracts to field)
   const parts=collectParts().filter(p=>p.text.trim()||p.no.trim()).map(p=>{
-    let t=stripMk(p.text); if(p.marks) t=t.replace(/\s+$/,'')+' ['+p.marks+']'; return {no:p.no,text:t};
+    let t=stripMk(p.text); if(p.marks) t=t.replace(/\s+$/,'')+' ['+p.marks+']';
+    return {no:p.no,text:t,answer:p.answer,solution:p.solution,answer_area:p.answer_area};
   });
   let stem=g('stem').replace(/\[\s*(?:total|T)\b[^\]]*\]/i,'').trim();
   const total=$('edTotal').value.trim(); if(total) stem=stem+'\n[Total: '+total+']';
   const topics=[...document.querySelectorAll('.edtopic:checked')].map(c=>c.value);
   const diff=$('edDiff')?$('edDiff').value:'medium';
   const entry={stem,solution:g('solution'),answer:$('edAns').value,
+    answer_area:$('edArea')?$('edArea').value:'',
     parts,options:collectOpts(),imgs:EDIT.imgs,type:$('edType').value,topic:topics,difficulty:diff};
   $('edMsg').textContent=T('保存中…','Saving…');
   try{

@@ -219,37 +219,17 @@ def _apply_edit_fields(r: dict, ed: dict) -> None:
     r["options"] = opts or None
     av = (ed.get("answer") or "").strip()
     r["answer"] = {"value": av, "kind": "human"} if av else None
-    # Per-part fields the editor does not surface yet (answer_area, and the answer/solution
-    # split out of the key). The editor replaces `parts` wholesale, so carry them across by
-    # part label — otherwise every edit would silently drop them.
-    CARRY = ("answer_area", "answer", "solution")
-
-    def _collect(parts, out=None, pre=""):
-        out = {} if out is None else out
-        for p in parts or []:
-            key = pre + (p.get("no") or "")
-            keep = {k: p[k] for k in CARRY if p.get(k)}
-            if keep:
-                out[key] = keep
-            _collect(p.get("children"), out, key)
-        return out
-
-    kept = _collect(r.get("parts"))
+    aa = (ed.get("answer_area") or "").strip()
+    r["answer_area"] = aa or None
+    # The editor now sends the per-part fields, and finalize_parts preserves them, so an
+    # emptied box actually clears (a carry-across would silently restore the old value).
     r["parts"] = ib.finalize_parts([p for p in (ed.get("parts") or []) if p.get("text", "").strip()])
-
-    def _restore(parts, pre=""):
-        for p in parts or []:
-            key = pre + (p.get("no") or "")
-            for k, v in kept.get(key, {}).items():
-                p.setdefault(k, v)
-            _restore(p.get("children"), key)
-
-    _restore(r["parts"])
     if "imgs" in ed:                              # persist uploads / deletions
         r["imgs"] = [a for a in ed["imgs"] if isinstance(a, dict) and a.get("path")]
     r["kind"] = "mcq" if r["options"] else "question"
     ib.canon_entry(r)                             # "(1)" options (answer follows), "(a)" parts
     ib.apply_answer_area(r)                       # keep the schema invariant on human edits
+    ib.apply_part_answers(r)                      # parts <-> entry summary stay consistent
     r["meta"]["schema"] = ib.SCHEMA_VERSION
     typ = (ed.get("type") or "").strip()
     topics, diff = ed.get("topic"), (ed.get("difficulty") or "").strip()
