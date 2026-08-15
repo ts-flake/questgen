@@ -269,3 +269,7 @@ body.dark ::-webkit-scrollbar-thumb:hover{background:#4d5560;background-clip:pad
 #expBody > label.hint > select{width:100%}
 #expBody > label.hint > input[type=checkbox]{flex:0 0 auto;margin:0}
 #expBody details{border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+
+/* overwrite-warning footer: three equal actions, so neither language makes one dominate */
+.warnActions{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.warnActions button{flex:1 1 0;min-width:0;justify-content:center;white-space:nowrap}

@@ -209,10 +209,10 @@
     <span style="flex:1"></span>
     <button class="danger" onclick="closeWarn()" data-en="Cancel">取消</button></div>
   <div id="warnBody"></div>
-  <div class="row" style="padding:10px 14px;border-top:1px solid var(--line);justify-content:flex-end">
-    <button onclick="closeWarn()" data-en="Cancel (review first — recommended)">取消 (推荐先检查)</button>
-    <button class="okbtn" onclick="warnGo(true)" data-ic="save"><span data-en="Back up, then run">备份后运行</span></button>
-    <button class="danger" onclick="warnGo(false)" data-en="Run without backup">不备份, 直接运行</button></div>
+  <div class="warnActions">
+    <button onclick="closeWarn()" title="建议先检查上表再决定" data-en-title="review the table above first" data-en="Cancel">取消</button>
+    <button class="okbtn" onclick="warnGo(true)" data-ic="save"><span data-en="Back up &amp; run">备份后运行</span></button>
+    <button class="danger" onclick="warnGo(false)" data-en="Run anyway">直接运行</button></div>
 </div></div>
 <div id="setModal"><div id="setBox">
   <div class="top"><b style="font-family:var(--serif)" data-ic="gear"><span data-en="Models / API keys">模型 / API key 设置</span></b>
