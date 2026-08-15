@@ -28,6 +28,7 @@ from pathlib import Path
 import context
 import interim_build as ib
 import llm_clean
+import table_split
 
 CHUNK = 90          # blocks per labeling call
 OVERLAP = 6         # carried context blocks between chunks
@@ -129,11 +130,17 @@ def _heuristic_labels(blocks: list[dict]) -> dict:
 
 
 def label_blocks(blocks: list[dict], ep, log=print, cancel=None) -> dict:
-    """Return {block_index: {"role":..., "label":...}} for every block."""
+    """Return {block_index: {"role":..., "label":...}} for every block.
+
+    Blocks carrying a `_role` hint were already decided structurally (see table_split) and
+    are neither sent to the model nor overwritten by it."""
+    hinted = {b["_i"]: {"role": b["_role"], "label": b.get("_label", "")}
+              for b in blocks if b.get("_role")}
+    blocks = [b for b in blocks if not b.get("_role")]
     if os.environ.get("QUESTGEN_LLM_MOCK") or ep is None:
-        return _heuristic_labels(blocks)
+        return {**_heuristic_labels(blocks), **hinted}
     sys = SYS_LABEL
-    labels: dict = {}
+    labels: dict = dict(hinted)
     i = 0
     while i < len(blocks):
         if cancel is not None and cancel.is_set():
@@ -233,12 +240,16 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
             entries.append(cur)
         cur, cur_part = None, None
 
+    def prov(b):
+        """Provenance index: the ORIGINAL MinerU block, even for blocks a pass synthesised."""
+        return b.get("_src_i", b["_i"])
+
     def open_q(b, qno="", stem="", flags=()):
         nonlocal cur, cur_part
         close()
         cur = {"qno": str(qno or len(entries) + 1), "section": cur_section, "stem": stem,
                "parts": [], "options": {}, "assets": [], "solution": [],
-               "pages": {b["page_idx"]}, "blocks": [b["_i"], b["_i"]], "flags": list(flags)}
+               "pages": {b["page_idx"]}, "blocks": [prov(b), prov(b)], "flags": list(flags)}
         cur_part = None
         return cur
 
@@ -246,7 +257,7 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
         """Add one content block to the open question (stem/part/option/asset/solution)."""
         nonlocal cur_part
         cur["pages"].add(b["page_idx"])
-        cur["blocks"][1] = max(cur["blocks"][1], b["_i"])
+        cur["blocks"][1] = max(cur["blocks"][1], prov(b))
         is_media = b["type"] in ("image", "table", "chart")
         # options first: a table/inline that holds A-D is consumed structurally,
         # its rendered image is redundant (no asset).
@@ -484,6 +495,7 @@ def extract_answer(solution: str, options: dict, has_parts: bool = False) -> dic
 
 def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
     blocks = ib.load_blocks(ctx, stem)
+    blocks = table_split.split_tables(blocks)     # layout tables -> ordinary blocks (+role hints)
     labels = label_blocks(blocks, ep, log=log, cancel=cancel)
     unknown = sorted({b["_unknown_type"] for b in blocks if b.get("_unknown_type")})
 

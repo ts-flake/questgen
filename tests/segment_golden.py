@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import context  # noqa: E402
 import interim_build as ib  # noqa: E402
 import llm_segment as ls  # noqa: E402
+import table_split  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 EXPECTED = Path(__file__).resolve().parent / "expected"
@@ -50,12 +51,22 @@ def _materialise(fx: dict, root: Path) -> tuple[context.Ctx, str]:
 
 
 def run_fixture(fx: dict) -> list[dict]:
-    """Replay one fixture through load_blocks + assemble_questions."""
+    """Replay one fixture the way build_one does: load → split layout tables → assemble.
+
+    The fixture's labels were captured against the pre-split stream, so they are mapped back
+    through `_src_i`. Blocks the split created carry their own role hint and need no label,
+    which is what lets a fixture survive the table pass without a fresh LLM run."""
     tmp = Path(tempfile.mkdtemp(prefix="qg_golden_"))
     try:
         ctx, stem = _materialise(fx, tmp)
-        blocks = ib.load_blocks(ctx, stem)
-        labels = {int(k): v for k, v in fx["labels"].items()}
+        blocks = table_split.split_tables(ib.load_blocks(ctx, stem))
+        cached = {int(k): v for k, v in fx["labels"].items()}
+        labels = {}
+        for b in blocks:
+            if b.get("_role"):
+                labels[b["_i"]] = {"role": b["_role"], "label": b.get("_label", "")}
+            elif b.get("_src_i") in cached:
+                labels[b["_i"]] = cached[b["_src_i"]]
         return _normalise(ls.assemble_questions(blocks, labels))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
