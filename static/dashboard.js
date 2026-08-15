@@ -909,30 +909,44 @@ function autoGrowAll(){document.querySelectorAll('#editLeft textarea').forEach(a
 window.addEventListener('resize',()=>{if($('editModal').classList.contains('on'))autoGrowAll();});
 function renderEditForm(){
   const e=EDIT;
+  const hr=`<div class="edsep"></div>`;
+  // Order follows how a question is actually reviewed: what it IS (stem), how it is
+  // classified (marks/type/topic/difficulty), what it asks (parts, options), then the
+  // answer side kept together — answer / answer area / solution were previously split
+  // apart by the tagging fields sitting between them.
   let h=ta(T('题干 stem (可空)','Stem (optional)'),e.stem,2,'stem');
-  h+=`<label>${T('子题 parts (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
-    +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
-  h+=`<label>${T('选项 options (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
-  h+=`<label>${T('答案 answer','Answer')}</label><input id="edAns" style="width:100%" value="${esc((e.answer&&e.answer.value)||'')}" onfocus="lastTA=this" oninput="lastTA=this">`;
-  h+=`<label>${T('答题区 answer_area (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
-    +`<input id="edArea" style="width:100%" value="${esc(e.answer_area||'')}" placeholder="[ANSWER] cm^2">`;
+
+  h+=hr;
   h+=`<label>${T('总分 total marks (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
   const curType=(e.tags&&e.tags.type)||'';
   const legacy=(curType&&!PTYPES.includes(curType))?`<option value="${curType}" selected>${curType} ${T('(旧, 已不在词表)','(legacy, not in vocab)')}</option>`:'';
   h+=`<label>${T('问题类型 type (tag)','Question type (tag)')}</label><select id="edType" style="width:200px">`
     +`<option value=""${curType?'':' selected'}>${T('(未标注)','(untagged)')}</option>`
     +typeOpts(curType)+legacy+`</select>`;
-  // topic (multi-select from taxonomy) + difficulty — tagging fields
+  const curDiff=(e.tags&&e.tags.difficulty)||'medium';
+  h+=`<label>${T('难度 difficulty','Difficulty')}</label><select id="edDiff" style="width:160px">`
+    +['basic','medium','advance'].map(d=>`<option value="${d}"${d===curDiff?' selected':''}>${d}</option>`).join('')+`</select>`;
   const curTopics=new Set((e.tags&&e.tags.topic)||[]);
   const tids=Object.keys(TAX||{}).sort();
   const trows=tids.length?tids.map(id=>`<label class="chkrow"><input type="checkbox" class="edtopic" value="${id}"${curTopics.has(id)?' checked':''}><span><b>${id}</b> ${esc((TAX[id]||{}).name||'')}</span></label>`).join(''):`<div class="hint" style="padding:6px">${T('无 taxonomy','no taxonomy')}</div>`;
   h+=`<label>${T('主题 topic','Topic')}</label><div id="edTopics" class="chklist" style="max-height:150px">${trows}</div>`;
-  const curDiff=(e.tags&&e.tags.difficulty)||'medium';
-  h+=`<label>${T('难度 difficulty','Difficulty')}</label><select id="edDiff" style="width:160px">`
-    +['basic','medium','advance'].map(d=>`<option value="${d}"${d===curDiff?' selected':''}>${d}</option>`).join('')+`</select>`;
+
+  h+=hr;
+  h+=`<label>${T('子题 parts (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
+    +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
+
+  h+=hr;
+  h+=`<label>${T('选项 options (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
+
+  h+=hr;                                   // answer side, kept contiguous
+  h+=`<label>${T('答案 answer','Answer')}</label><input id="edAns" style="width:100%" value="${esc((e.answer&&e.answer.value)||'')}" onfocus="lastTA=this" oninput="lastTA=this">`;
+  h+=`<label>${T('答题区 answer_area (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
+    +`<input id="edArea" style="width:100%" value="${esc(e.answer_area||'')}" placeholder="[ANSWER] cm^2">`;
   h+=ta(T('解答 solution','Solution'),e.solution,3,'solution');
   h+=`<div id="edAnsRef"></div>`;
-  h+=`<label style="margin-top:6px">${T('图片 (marker 用 ![](path) 引用)','Images (reference with ![](path))')}</label><div id="edImgList"></div>`
+
+  h+=hr;
+  h+=`<label>${T('图片 (marker 用 ![](path) 引用)','Images (reference with ![](path))')}</label><div id="edImgList"></div>`
     +`<input type="file" id="edUpload" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="uploadImg(this,null)">`
     +`<label for="edUpload" class="btnlike">${IC('upload')}${T('上传新图','upload image')}</label>`;
   $('editLeft').innerHTML=h;
@@ -1005,10 +1019,10 @@ function renderEditParts(){
     <span style="display:flex;flex-direction:column"><button onclick="movePart(${i},-1)" style="padding:0 5px">↑</button><button onclick="movePart(${i},1)" style="padding:0 5px">↓</button></span>
     <button class="danger" onclick="delPart(${i})">${IC('x')}</button>
     <div class="epAns">
-      <label>${T('答案','Ans')}</label><input data-f="answer" value="${esc(p.answer||'')}" placeholder="${T('该子题答案','answer for this part')}">
-      <label>${T('答题区','Area')}</label><input data-f="answer_area" value="${esc(p.answer_area||'')}" placeholder="[ANSWER] cm^2">
-      <label>${T('解答','Sol')}</label><input data-f="solution" value="${esc(p.solution||'')}" placeholder="${T('该子题解答','working for this part')}">
-    </div></div>`).join('');
+      <label>${T('答案','Answer')}</label><input data-f="answer" value="${esc(p.answer||'')}" placeholder="${T('该子题答案','answer for this part')}">
+      <label>${T('答题区','Answer area')}</label><input data-f="answer_area" value="${esc(p.answer_area||'')}" placeholder="[ANSWER] cm^2">
+      <label>${T('解答','Solution')}</label><input data-f="solution" value="${esc(p.solution||'')}" placeholder="${T('该子题解答','working for this part')}">
+    </div></div>`).join('<div class="edsep sub"></div>');
   $('edParts').querySelectorAll('textarea').forEach(autoGrow);
 }
 function collectParts(){
