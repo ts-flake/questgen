@@ -117,6 +117,8 @@ def prefetch(paths, workers: int = 8) -> None:
     with ThreadPoolExecutor(max_workers=workers) as ex:
         list(ex.map(touch, paths))
 
+SCHEMA_VERSION = 2          # interim row contract; see docs/INTERIM_SCHEMA.md
+
 NOISE_TYPES = {"page_number", "footer", "page_footnote", "header"}
 BOILERPLATE = re.compile(r"^(©|\d{1,4}$|Educational Publishing|Page \d)", re.I)
 CODE_DIV = re.compile(r"^<div[^>]*>\n?|\n?</div>$|^```\w*\n?|\n?```$")
@@ -565,6 +567,60 @@ def finalize_parts(flat: list[dict]) -> list[dict]:
     return tree
 
 
+def split_answer_area(text: str) -> tuple[str, str | None]:
+    """Lift the TRAILING answer-writing area out of a question/part text into a template.
+
+    The area is the run of lines at the end that carry an [ANSWER] blank, so it keeps whatever
+    the paper prints alongside the blank — a unit after it ("[ANSWER] cm^2"), a currency symbol
+    before it ("$[ANSWER]"), or several labelled blanks ("equation: [ANSWER] / conditions:
+    [ANSWER]"). Returns (text_without_area, area) with area None when there is nothing to lift.
+
+    Only the trailing region moves. A blank in the middle of a sentence, or one followed by more
+    content (a figure), stays put: it is part of the sentence, not a place to write the answer.
+    Idempotent — a second pass finds no trailing blank."""
+    if "[ANSWER]" not in (text or ""):
+        return text, None
+
+    def is_area_line(ln: str) -> bool:
+        """A line that exists to be written on: a blank plus at most a short label or unit.
+        Prose that merely contains blanks ('The value is [ANSWER] cm and …') is not one."""
+        if "[ANSWER]" not in ln:
+            return False
+        residue = ln.replace("[ANSWER]", " ").strip()
+        return len(residue.split()) <= 3
+
+    lines = text.split("\n")
+    i = len(lines)
+    while i > 0:
+        ln = lines[i - 1].strip()
+        if is_area_line(ln):
+            i -= 1
+        elif not ln and i < len(lines):              # blank line INSIDE the area
+            i -= 1
+        else:
+            break
+    if i >= len(lines):                              # last line is not an answer line
+        return text, None
+    area = "\n".join(lines[i:]).strip()
+    body = "\n".join(lines[:i]).rstrip()
+    return body, (area or None)
+
+
+def apply_answer_area(row: dict) -> None:
+    """Move every trailing answer area (stem + each part, recursively) into `answer_area`."""
+    row["stem"], area = split_answer_area(row.get("stem") or "")
+    row["answer_area"] = area
+
+    def walk(parts):
+        for p in parts:
+            p["text"], a = split_answer_area(p.get("text") or "")
+            if a:
+                p["answer_area"] = a
+            walk(p.get("children") or [])
+
+    walk(row.get("parts") or [])
+
+
 def polish_row(row: dict) -> None:
     flat_in = flatten_parts(row["parts"]) if row["parts"] and "children" in str(row["parts"]) else row["parts"]
     # total marks: explicit "[Total: N]" anywhere (raw text), else a lone trailing "[N]"
@@ -586,6 +642,8 @@ def polish_row(row: dict) -> None:
     if row.get("options"):
         row["options"] = {k: normalize_text(v).strip() for k, v in row["options"].items()}
     canon_entry(row)                                 # "(1)" option keys, "(a)" part labels
+    apply_answer_area(row)                           # trailing blanks -> answer_area field
+    row["meta"]["schema"] = SCHEMA_VERSION
 
 
 def validate(entry: dict, img_dir: Path) -> None:

@@ -51,24 +51,37 @@ def _materialise(fx: dict, root: Path) -> tuple[context.Ctx, str]:
 
 
 def run_fixture(fx: dict) -> list[dict]:
-    """Replay one fixture the way build_one does: load → split layout tables → assemble.
+    """Replay a fixture through the WHOLE build: load → split layout tables → assemble →
+    polish (marks, answer_area, canonical labels) → final rows.
 
-    The fixture's labels were captured against the pre-split stream, so they are mapped back
-    through `_src_i`. Blocks the split created carry their own role hint and need no label,
-    which is what lets a fixture survive the table pass without a fresh LLM run."""
+    Both LLM steps are replaced by the fixture's cached output, so this runs offline while
+    still covering everything deterministic between MinerU and the bank. Labels are cached
+    from a real run, which labels the stream AFTER the table split, so they key on `_i`
+    directly; a structural `_role` hint outranks them."""
     tmp = Path(tempfile.mkdtemp(prefix="qg_golden_"))
+    real_labels, real_answers = ls.label_blocks, ls.interpret_answers
     try:
         ctx, stem = _materialise(fx, tmp)
-        blocks = table_split.split_tables(ib.load_blocks(ctx, stem))
         cached = {int(k): v for k, v in fx["labels"].items()}
-        labels = {}
-        for b in blocks:
-            if b.get("_role"):
-                labels[b["_i"]] = {"role": b["_role"], "label": b.get("_label", "")}
-            elif b.get("_src_i") in cached:
-                labels[b["_i"]] = cached[b["_src_i"]]
-        return _normalise(ls.assemble_questions(blocks, labels))
+
+        def fake_labels(blocks, ep, log=print, cancel=None):
+            out = {}
+            for b in blocks:
+                if b.get("_role"):
+                    out[b["_i"]] = {"role": b["_role"], "label": b.get("_label", "")}
+                elif b["_i"] in cached:
+                    out[b["_i"]] = cached[b["_i"]]
+            return out
+
+        ls.label_blocks = fake_labels
+        ls.interpret_answers = lambda blocks, ep, log=print, cancel=None: list(fx.get("answers") or [])
+        ls.build_one(ctx, stem, ep=None, log=lambda *a, **k: None)
+        rows = ib.read_jsonl(ctx.interim_dir / f"{stem}.jsonl", required=False)
+        for r in rows:                                  # drop machine-specific noise
+            r.get("meta", {}).pop("edited_at", None)
+        return _normalise(rows)
     finally:
+        ls.label_blocks, ls.interpret_answers = real_labels, real_answers
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -106,9 +119,11 @@ def cmd_add(a) -> int:
         print(f"{log} has no question_labels", file=sys.stderr)
         return 2
     FIXTURES.mkdir(parents=True, exist_ok=True)
+    ansf = ctx.interim_dir / f"{a.stem}.answers.json"
     fx = {"name": a.name, "stem": a.stem,
           "origin": f"{a.subject}/{a.stage}/{a.level}/{a.source}",
           "labels": labels,
+          "answers": json.loads(ansf.read_text(encoding="utf-8")) if ansf.is_file() else [],
           "content_list": json.loads(Path(cl).read_text(encoding="utf-8"))}
     (FIXTURES / f"{a.name}.json").write_text(
         json.dumps(fx, ensure_ascii=False, indent=1), encoding="utf-8")

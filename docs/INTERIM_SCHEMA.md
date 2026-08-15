@@ -106,12 +106,28 @@ The space a student writes the answer in, as **structured data** rather than pro
 "answer_area": null                // none (e.g. a "Draw…" part)
 ```
 
+**What gets lifted.** `interim_build.split_answer_area` moves the **trailing** answer-writing
+region out of `stem`/`text` into the field. A line qualifies when it holds an `[ANSWER]` blank
+and at most a short label or unit beside it (≤ 3 words of residue), so the region keeps whatever
+the paper prints around the blank:
+
+| printed | `answer_area` |
+|---|---|
+| `…travel in 40 min?` / `____ km` | `[ANSWER] km` |
+| `…per working hour?` / `$____` | `$[ANSWER]` |
+| `equation: ____` / `conditions: ____` | `equation: [ANSWER]\n\nconditions: [ANSWER]` |
+
+**What stays inline.** A blank in the middle of a sentence (`The value is ____ cm and the mass is
+____ g`) or one followed by more content (a figure) is part of the text, not a place to write, and
+is left where it is. So `[ANSWER]` may still appear in `stem`/`text`; the field is the answer
+*area*, not every blank.
+
 **Scope decisions (locked):**
-- The field is the **only** representation. Inline `[ANSWER]` inside `stem`/`text` is **not** part
-  of v2 — the ingest moves it out into the field.
 - The bank does **not** model answer *lines* (count, length, ruling). That is presentation, decided
   at export time from `marks` and question type.
 - Units live **inside** the template string, not in a separate field.
+- Extraction is idempotent, and runs on build **and** on human edit, so the invariant holds for
+  hand-written questions too.
 
 ## 5. Segmentation roles (intermediate, not persisted)
 

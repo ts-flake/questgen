@@ -219,11 +219,34 @@ def _apply_edit_fields(r: dict, ed: dict) -> None:
     r["options"] = opts or None
     av = (ed.get("answer") or "").strip()
     r["answer"] = {"value": av, "kind": "human"} if av else None
+    # answer_area is a field, and the editor does not surface it yet, so carry the old value
+    # across by part label — a wholesale parts replacement would otherwise drop it silently.
+    def _areas(parts, out=None, pre=""):
+        out = {} if out is None else out
+        for p in parts or []:
+            key = pre + (p.get("no") or "")
+            if p.get("answer_area"):
+                out[key] = p["answer_area"]
+            _areas(p.get("children"), out, key)
+        return out
+
+    kept = _areas(r.get("parts"))
     r["parts"] = ib.finalize_parts([p for p in (ed.get("parts") or []) if p.get("text", "").strip()])
+
+    def _restore(parts, pre=""):
+        for p in parts or []:
+            key = pre + (p.get("no") or "")
+            if key in kept and not p.get("answer_area"):
+                p["answer_area"] = kept[key]
+            _restore(p.get("children"), key)
+
+    _restore(r["parts"])
     if "imgs" in ed:                              # persist uploads / deletions
         r["imgs"] = [a for a in ed["imgs"] if isinstance(a, dict) and a.get("path")]
     r["kind"] = "mcq" if r["options"] else "question"
     ib.canon_entry(r)                             # "(1)" options (answer follows), "(a)" parts
+    ib.apply_answer_area(r)                       # keep the schema invariant on human edits
+    r["meta"]["schema"] = ib.SCHEMA_VERSION
     typ = (ed.get("type") or "").strip()
     topics, diff = ed.get("topic"), (ed.get("difficulty") or "").strip()
     if typ or topics is not None or diff:         # human-set topic / type / difficulty tags
