@@ -938,9 +938,14 @@ function renderEditForm(){
   h+=`<label>${T('选项 options (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
 
   h+=hr;                                   // answer side, kept contiguous
-  h+=`<label>${T('答案 answer','Answer')}</label><input id="edAns" style="width:100%" value="${esc((e.answer&&e.answer.value)||'')}" onfocus="lastTA=this" oninput="lastTA=this">`;
+  // When the parts carry answers they are the source of truth and this box is regenerated
+  // from them on save — say so instead of silently discarding what was typed here.
+  const partAns=(function any(ps){return (ps||[]).some(p=>p.answer||any(p.children));})(e.parts);
+  h+=`<label>${T('答案 answer','Answer')}</label>`
+    +`<textarea id="edAns" rows="1"${partAns?' readonly':''} onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc((e.answer&&e.answer.value)||'')}</textarea>`
+    +(partAns?`<div class="hint" style="margin-top:2px">${T('由各子题答案自动汇总 — 请在上面的子题里修改','generated from the sub-part answers — edit them above')}</div>`:'');
   h+=`<label>${T('答题区 answer_area (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
-    +`<input id="edArea" style="width:100%" value="${esc(e.answer_area||'')}" placeholder="[ANSWER] cm^2">`;
+    +`<textarea id="edArea" rows="1" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="[ANSWER] cm^2">${esc(e.answer_area||'')}</textarea>`;
   h+=ta(T('解答 solution','Solution'),e.solution,3,'solution');
   h+=`<div id="edAnsRef"></div>`;
 
@@ -1018,9 +1023,9 @@ function renderEditParts(){
     <div class="epMain">
       <textarea rows="1" data-f="text" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc(p.text)}</textarea>
       <div class="epAns">
-        <label>${T('答案','Answer')}</label><input data-f="answer" value="${esc(p.answer||'')}" placeholder="${T('该子题答案','answer for this part')}">
-        <label>${T('答题区','Answer area')}</label><input data-f="answer_area" value="${esc(p.answer_area||'')}" placeholder="[ANSWER] cm^2">
-        <label>${T('解答','Solution')}</label><input data-f="solution" value="${esc(p.solution||'')}" placeholder="${T('该子题解答','working for this part')}">
+        <label>${T('答案','Answer')}</label><textarea rows="1" data-f="answer" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="${T('该子题答案','answer for this part')}">${esc(p.answer||'')}</textarea>
+        <label>${T('答题区','Answer area')}</label><textarea rows="1" data-f="answer_area" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="[ANSWER] cm^2">${esc(p.answer_area||'')}</textarea>
+        <label>${T('解答','Solution')}</label><textarea rows="1" data-f="solution" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="${T('该子题解答','working for this part')}">${esc(p.solution||'')}</textarea>
       </div>
     </div>
     <input class="no" style="width:44px" title="${T('分值','marks')}" placeholder="${T('分','m')}" value="${p.marks!=null?p.marks:''}" data-f="marks">
