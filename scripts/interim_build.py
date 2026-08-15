@@ -1,24 +1,13 @@
-"""M3: extracted/<stem>/content_list.json → interim/<stem>.jsonl  (THE product).
+"""M3: extracted/<stem>/content_list.json -> interim/<stem>.jsonl  (THE product).
 
-Deterministic pipeline: preprocess → zone split → segment questions → parse answers
-→ pair → validate.  Text is assembled VERBATIM from MinerU blocks (only whitespace
-normalization inside math); nothing is rewritten.  公式保持 $ / $$, 表格保持 HTML。
+Deterministic pipeline: preprocess -> zone split -> segment questions -> parse answers
+-> pair -> validate. Text is assembled VERBATIM from MinerU blocks (only whitespace
+normalization inside math); nothing is rewritten. 公式保持 $ / $$, 表格保持 HTML。
 Every defect becomes a flag on the entry — nothing is silently dropped.
 
-Lean entry shape (question-centric; section/layout are internal scaffolding used
-for answer pairing, then demoted into meta):
-{
-  "qid": "chp2_algebra-017",                 # file-sequential, collision-free
-  "kind": "mcq"|"question",
-  "stem": "...", "parts": [{"no":"(a)","text":"..."}],
-  "options": {"1":"...","2":"..."},          # mcq only, else null
-  "answer": {"value":..., "kind":"mcq_option"|"tail_extract"} | null,
-  "solution": "..." | null,
-  "imgs": [{"kind":"image"|"table","path","page","bbox"}],
-  "meta": {"source_id","subject","stage","level","file","pages":[...],
-           "section","qno","blocks":[first,last]},
-  "flags": [...]
-}
+The row contract (fields, label formats, placeholder vocabulary) lives in
+docs/INTERIM_SCHEMA.md. It is not restated here: two copies drift, and the copy in the
+code is the one nobody updates.
 
 CLI:  python3 scripts/interim_build.py --all [--source book_math_worksheet_18]
 """

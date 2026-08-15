@@ -1,22 +1,15 @@
-"""M3 v3 (experiment): LLM-driven segmentation, deterministic verbatim assembly.
+"""M3: LLM-driven segmentation, deterministic verbatim assembly.
 
-Format-independent replacement for the regex segmenter. The LLM only LABELS each
-MinerU block with a role (it never rewrites text); a deterministic assembler groups
-blocks between question-start markers and builds entries VERBATIM from the original
-block content. Robust across sources because the model reads meaning ("this starts
-question 1") instead of matching a numbering convention.
+The LLM only LABELS each MinerU block with a role; it never rewrites text. A
+deterministic assembler then groups blocks between question-start markers and builds
+entries VERBATIM from the original block content. That split is the point: the model
+reads meaning ("this starts question 1") rather than matching a numbering convention,
+so a new paper layout does not need new parsing rules.
 
-Blocks are the atomic unit (verified: MinerU keeps each sentence/equation/figure in
-one block; a single question just spans several blocks). One label per block.
-
-Roles: q (starts a numbered question) | body (stem continuation) | part (sub-part
-(a)/(b)/...) | option (MCQ choice, may be a figure/table) | figure (content diagram)
-| solution (worked answer) | noise (header/footer/instructions/blank).
+Layout tables are rewritten into ordinary blocks first (table_split), because a table
+reaches the labeler only as a short preview and one table can hold several questions.
 
 Answer files (<stem>_ans) are labeled the same way; solutions pair to questions by qno.
-
-CLI: python3 scripts/llm_segment.py --all [--source ...]
-Uses config.yaml `llm:`. QUESTGEN_LLM_MOCK=1 = heuristic labels (no API), for plumbing.
 """
 from __future__ import annotations
 
@@ -294,7 +287,7 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
         else:
             cur["stem"] = (cur["stem"] + "\n" + txt).strip()
 
-    # --- content before the first "q" is NOT dropped (it used to be, silently) -------------
+    # --- content before the first "q" ------------------------------------------------------
     # Two shapes, told apart by whether a sub-part starts there:
     #   * a "part" appears  -> the paper opens straight at "(a)" with no stem, so no block could
     #     carry a number: open an IMPLICIT question (flagged) rather than lose the whole thing.
@@ -509,8 +502,8 @@ def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
         answers = interpret_answers(ablocks, ep, log=log, cancel=cancel)
 
     raw = assemble_questions(blocks, labels)
-    # layered pairing: (section, qno) exact, else same-qno occurrence order. Handles
-    # per-section number restarts without the old "merge both Q7, hope clean prunes".
+    # layered pairing: (section, qno) exact, else same-qno occurrence order — a paper whose
+    # numbering restarts per section has several "Q7", and each must pair with its own answer.
     matched = match_answers(raw, answers)
     out_rows = []
     for idx, e in enumerate(raw):

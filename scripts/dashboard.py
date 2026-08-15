@@ -1,7 +1,12 @@
-"""questgen v1 dashboard. M1: Sources tab — preview original/, range-select pages,
-crop / mask, merge, save to raw/ (via source_ops, always recorded in ops.json).
+"""questgen dashboard — the local UI for the whole pipeline.
 
-stdlib + PyMuPDF only.  Run:  python3 scripts/dashboard.py  →  http://127.0.0.1:8760
+Four tabs: Sources (preview a PDF, range-select / crop / mask pages, save to raw/ via
+source_ops, always recorded in ops.json), Pipeline (run extract -> interim -> clean ->
+tag -> build DB, with a guard before overwriting an edited bank), Bank (browse, filter,
+edit, add, export .docx) and AI Gen (generate questions from the bank, then review).
+
+Serves static/ and binds to 127.0.0.1 only; it reads and writes the content tree directly.
+stdlib + PyMuPDF.  Run:  python3 scripts/dashboard.py  ->  http://127.0.0.1:8760
 """
 from __future__ import annotations
 

@@ -1,15 +1,15 @@
-"""M5: export selected bank entries → worksheet .docx
+r"""M5: export selected bank entries -> worksheet .docx
 
-Format (per user spec): a 2-column table — col 1 = question number, col 2 = content.
-Stem and each sub-part get their own row; one blank row per question as answer
-space. Solutions go at the end of the document, same 2-column table form.
+Layout: a grid table, 3 columns when marks are shown (number | content | marks) and 2
+otherwise. Each sub-part is ONE row whose cell holds the text and then the answer-writing
+lines, so nothing blank sits between sub-parts; the mark sits one line above the bottom of
+its row, and a final row merges the last two columns for "[Total: X]". A teacher copy
+replaces the writing space with the answer and solution inline, in red.
 
-Math: the lean entries keep MinerU latex ($/$$). Word can't render raw latex, so
-we downconvert simple P6-level latex to unicode text (×, ÷, ∠, °, fractions a/b).
-Images: ![](images/xx.jpg) markers are replaced by embedded pictures.
-HTML tables: converted to nested docx tables.
-
-Deps: pip install python-docx  (pillow optional, for image sizing)
+Math: entries keep MinerU's latex ($ / $$). Word cannot render that, so latex is converted
+to real OMML equations (latex2mathml -> mathml2omml); a unicode transliteration is only the
+fallback when conversion fails. Chemistry \ce{} is expanded before conversion. HTML tables
+become real docx tables, with rowspan/colspan honoured via cell merges.
 """
 from __future__ import annotations
 

@@ -525,10 +525,9 @@ function rich(txt,fs){ // text -> html: escape, but pass through tables & image 
    .replace(/\[ANSWER\]/g,'<span class="ph">[ANSWER]</span>')
    .replace(/\[QN\]/g,'<span class="ph">[QN]</span>');
 }
-// Search used to JSON.stringify every entry on every keystroke (≈1k entries × 3 fields)
-// and re-render + re-typeset all cards synchronously — that was the "卡顿". Now each entry
-// carries a lowercase search blob built once at load, input is debounced, the filter runs
-// once per render, and only a page of cards is materialised.
+// Search runs over ~1k entries on every keystroke, so nothing per-keystroke may be O(entry
+// size): each entry carries a lowercase blob built once at load, input is debounced, the
+// filter runs once per render, and only a page of cards is materialised.
 function searchBlob(e){
   const parts=[];
   const walk=ps=>(ps||[]).forEach(p=>{parts.push(p.no||'',p.text||'');walk(p.children)});
@@ -910,9 +909,9 @@ window.addEventListener('resize',()=>{if($('editModal').classList.contains('on')
 function renderEditForm(){
   const e=EDIT;
   const hr=`<div class="edsep"></div>`;
-  // Section order: classification first (marks/type/difficulty/topic), then the stem, what
-  // it asks (parts, options), then the answer side kept contiguous — answer / answer area /
-  // solution used to be split apart by the tagging fields sitting between them.
+  // Section order: classification (marks/type/difficulty/topic), stem, what it asks (parts,
+  // options), then the answer side — answer, answer area and solution stay contiguous so the
+  // three are read and edited together.
 
   let h=`<label>${T('总分 total marks (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
   const curType=(e.tags&&e.tags.type)||'';
