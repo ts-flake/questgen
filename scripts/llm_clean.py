@@ -82,6 +82,9 @@ latex — as long as the content stays faithful to the source. You MUST NOT inve
    Wrong: "$0.25 \\, dm^{3}$"   Right: "$0.25\\,\\mathrm{dm^3}$"
    Wrong: "$9.8 m s^{-2}$"      Right: "$9.8\\,\\mathrm{m\\,s^{-2}}$"
    Wrong: "$25 cm^{2}$"         Right: "$25\\,\\mathrm{cm^2}$"
+   The unit is often left OUTSIDE the math with only its exponent inside — pull it in:
+   Wrong: "area is 25 cm $^{2}$"  Right: "area is $25\\,\\mathrm{cm^2}$"
+   Wrong: "12 cm$^{3}$"           Right: "$12\\,\\mathrm{cm^3}$"
    This is only for UNITS (m, cm, kg, s, N, J, mol, dm^3, °C ...). Algebraic variables stay italic:
    "$x^{2}$", "$v = u + at$" are already correct — never wrap those in \\mathrm.
 5. Escaped currency: dollar amounts in text stay as \\$ (e.g. \\$150); they are NOT math delimiters.

@@ -946,7 +946,7 @@ function renderEditForm(){
   // from them on save — say so instead of silently discarding what was typed here.
   const partAns=(function any(ps){return (ps||[]).some(p=>p.answer||any(p.children));})(e.parts);
   // the note goes ABOVE the box: it explains why the box is empty before you look at it
-  h+=(partAns?`<div class="note" style="margin-top:10px">${IC('info')}<span>${T('本题答案存放在各子题中 — 请在上面的子题里填写','this question keeps its answers on the sub-parts — fill them in above')}</span></div>`:'')
+  h+=(partAns?`<div class="note" style="margin-top:10px">${IC('info')}<span>${T('本题答案存放在各子题中 — 请在上面的子题里填写','This question keeps its answers on the sub-parts — fill them in above')}</span></div>`:'')
     +`<label${partAns?' style="margin-top:2px"':''}>${T('答案','Answer')}</label>`
     +`<textarea id="edAns" rows="1"${partAns?' readonly':''} onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc((e.answer&&e.answer.value)||'')}</textarea>`;
   h+=`<label>${T('答题区 (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`

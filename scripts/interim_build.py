@@ -474,25 +474,19 @@ INLINE_PART = re.compile(r"(?m)^[ \t]*(\([a-z]{1,4}\))[ \t]+(?=\S)")
 # text, the superscript in its own math span) instead of one math span. Fold them into
 # "$\mathrm{cm^{2}}$" (whole unit upright in math). The split — letters OUTSIDE the $ — is the
 # tell that this is a unit, not an algebraic power like "$x^{2}$" (which stays entirely in math).
-_SPLIT_UNIT = re.compile(r"(?<![A-Za-z\\])([A-Za-z]{1,4})\s*\$\s*\^\s*\{?\s*([0-9]{1,3}[+\-−]?|[+\-−]?[0-9]{1,3}|[+\-−])\s*\}?\s*\$")
-
-
-def fix_split_units(s: str) -> str:
-    return _SPLIT_UNIT.sub(lambda m: r"$\mathrm{" + m.group(1) + "^{" + m.group(2).replace("−", "-") + "}}$", s)
-
-
 def normalize_text(s: str) -> str:
     """THE single deterministic, source-agnostic text normalizer. Applied to every
     text field in BOTH segment (polish_row) and clean (_coerce) so nothing bypasses it:
     - \\cent → ¢ ; <img src> → ![]() marker
     - empty option brackets ( ) removed ; marks [3] stripped
     - answer blanks (underscores / 4+ dot-leaders / ……) → [ANSWER]  (kept for docx layout)
+    Unit shapes ("cm $^{2}$" -> "$\\mathrm{cm^2}$") are NOT handled here — that judgement
+    (unit vs algebraic variable) belongs to the clean step, which owns latex hygiene.
     - figure/table N.X → figure/table [QN].X  ([QN] = question-number token)
     Idempotent (running twice changes nothing)."""
     s = s or ""
     s = re.sub(r"\\cents?\b", "¢", s)
     s = re.sub(r'<img[^>]*\bsrc=["\']([^"\']+)["\'][^>]*/?>', r'![](\1)', s)
-    s = fix_split_units(s)                           # "cm$^{2}$" -> "$\mathrm{cm^{2}}$"
     s = TOTAL_MARK.sub("", s)                        # [Total: N] captured at row level, removed everywhere
     s = re.sub(r"[（(]\s*[)）]", "", s)             # empty mcq answer bracket
     # per-part marks [N] are NOT stripped here — captured into a field by extract_marks_tree
