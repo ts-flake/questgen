@@ -74,16 +74,22 @@ For each answer:
   for the first answers until a new heading appears in the blocks.
 - "qno": question number as plain digits ("Q1" -> "1"). If an answer has NO printed number (OCR
   dropped it), infer it from position — the next number after the previous answer.
+- "part": the sub-part this record answers, as printed — "(a)", "(b)(i)", "(ii)". Use "" when the
+  record covers the whole question. A key is often laid out with ONE ROW PER SUB-PART; emitting one
+  record per row is fine AS LONG AS every record carries its "qno" and its "part". A bare "(ii)"
+  belongs to the last lettered part seen, so report it as "(b)(ii)".
 - "answer": the final answer(s). For multiple-choice, the option key (A/B/C/D or 1-4). Otherwise the
-  final numeric/expression result. If the question has MULTIPLE PARTS (a),(b),(i)... capture EVERY
-  part's answer, labelled, e.g. "(a) $5$; (b)(i) $12\\,\\mathrm{N}$; (b)(ii) $3.0$". Do NOT return only
-  one part's answer. Wrap latex in $...$. Use "" only if there is genuinely no final answer.
+  final numeric/expression result. If you put a whole multi-part question in ONE record, label the
+  parts inline: "(a) $5$; (b)(i) $12\\,\\mathrm{N}$; (b)(ii) $3.0$" — never return just one part's
+  answer. Wrap latex in $...$. Use "" only if there is genuinely no final answer (a blank cell).
+  BEWARE: a key usually has a MARKS column — a lone small integer in its own narrow column is the
+  mark for that row, NOT the answer. Never report a mark as the answer.
 - "solution": the working/explanation, faithful to the source (do not invent), latex wrapped in $...$,
   HTML <table> kept as-is. "" if none.
 - "figs": array of block indices [i] whose blocks are solution figures/diagrams for THIS answer (else []).
 
 Read EVERY block. Do not merge two answers, do not split one. OUTPUT exactly ONE json array, no other text:
-[{"section":"Section A","qno":"1","answer":"D","solution":"...","figs":[]}, {"section":"Section A","qno":"2","answer":"(a) $5$; (b) $9.4$","solution":"...","figs":[5]}]
+[{"section":"Section A","qno":"1","part":"","answer":"D","solution":"...","figs":[]}, {"section":"","qno":"11","part":"(b)(iii)","answer":"$120$","solution":"...","figs":[]}]
 """
 
 
@@ -405,7 +411,11 @@ def interpret_answers(blocks: list[dict], ep, log=print, cancel=None) -> list[di
                 # collapse even when the LLM reformats them between chunks (escaped $, ; vs
                 # \n, extra steps). Without a section, keep content in the key so genuine
                 # un-headed restarts (two different 'Q7') survive.
-                key = (_norm_section(section), qno) if section else ("", qno, (answer or "")[:40], sol[:60])
+                # `part` is in the key: a key laid out per sub-part emits several records with
+                # the same (section, qno), and they must NOT dedup into one.
+                part = str(r.get("part") or "").strip()
+                key = ((_norm_section(section), qno, part) if section
+                       else ("", qno, part, (answer or "")[:40], sol[:60]))
                 if key in seen:                       # overlap re-read -> merge into existing
                     rec = out[seen[key]]
                     if answer and not rec["answer"]:
@@ -415,9 +425,47 @@ def interpret_answers(blocks: list[dict], ep, log=print, cancel=None) -> list[di
                     rec["figs"].extend(fi for fi in figs if fi not in rec["figs"])
                     continue
                 seen[key] = len(out)
-                out.append({"section": section, "qno": qno, "answer": answer,
-                            "solution": sol, "figs": figs})
+                out.append({"section": section, "qno": qno, "part": str(r.get("part") or "").strip(),
+                            "answer": answer, "solution": sol, "figs": figs})
         i += CHUNK
+    return out
+
+
+def merge_answer_records(answers: list[dict]) -> list[dict]:
+    """Collapse the records of ONE question into one record.
+
+    An answer key laid out per sub-part (a table row per "(a)", "(b)(i)", …) makes the
+    interpreter emit several records that all carry the same question number. match_answers
+    pairs a question with a single record, so the rest would be dropped silently — five of
+    six answers, in the paper this was found on.
+
+    Merging rebuilds the packed "(a) …; (b)(i) …" form the rest of the pipeline already
+    understands, so split_by_parts can put each piece on its part. When the interpreter did
+    not report a part label the pieces are still joined, keeping them visible for a human
+    rather than lost."""
+    out: list[dict] = []
+    by_key: dict = {}
+    for a in answers:
+        key = (_norm_section(a.get("section", "")), str(a.get("qno", "")))
+        first = by_key.get(key)
+        if first is None:
+            lab = str(a.get("part") or "").strip()
+            if lab:                                   # keep it labelled like the ones merged in
+                for field in ("answer", "solution"):
+                    if (a.get(field) or "").strip():
+                        a[field] = f"{lab} {a[field].strip()}"
+            by_key[key] = a
+            out.append(a)
+            continue
+        for field in ("answer", "solution"):
+            piece = (a.get(field) or "").strip()
+            if not piece:
+                continue
+            label = str(a.get("part") or "").strip()
+            piece = f"{label} {piece}".strip() if label else piece
+            prev = (first.get(field) or "").strip()
+            first[field] = f"{prev}; {piece}" if prev else piece
+        first.setdefault("figs", []).extend(a.get("figs") or [])
     return out
 
 
@@ -451,6 +499,15 @@ def match_answers(questions: list[dict], answers: list[dict]) -> list:
         dq = queues.get(str(q.get("qno", "")))
         if dq:
             result[qi] = answers[dq.popleft()]
+    # Pass 3: a question whose number was never PRINTED (the paper opens straight at "(a)",
+    # so assemble_questions numbered it by position) cannot match a key that uses the real
+    # number. Its qno carries no information, so fall back to reading order over whatever
+    # records are still unclaimed.
+    taken = {id(a) for a in result if a is not None}
+    leftover = deque(a for a in answers if id(a) not in taken)
+    for qi, q in enumerate(questions):
+        if result[qi] is None and "implicit_question_start" in (q.get("flags") or []) and leftover:
+            result[qi] = leftover.popleft()
     return result
 
 
@@ -504,6 +561,7 @@ def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
     raw = assemble_questions(blocks, labels)
     # layered pairing: (section, qno) exact, else same-qno occurrence order — a paper whose
     # numbering restarts per section has several "Q7", and each must pair with its own answer.
+    answers = merge_answer_records(answers)      # a per-sub-part key emits one record per row
     matched = match_answers(raw, answers)
     out_rows = []
     for idx, e in enumerate(raw):
