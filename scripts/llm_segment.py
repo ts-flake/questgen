@@ -555,8 +555,8 @@ def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
     dropped = [i for i in content_blocks if i not in used]
     report = {
         "file": stem, "questions": len(out_rows), "engine": "llm_segment",
-        "with_solution": sum(1 for r in out_rows if r["solution"]),
-        "with_answer": sum(1 for r in out_rows if r["answer"]),
+        "with_solution": sum(1 for r in out_rows if ib.has_answer(r, "solution")),
+        "with_answer": sum(1 for r in out_rows if ib.has_answer(r)),
         "mcq": sum(1 for r in out_rows if r["kind"] == "mcq"),
         "flagged": sum(1 for r in out_rows if r["flags"]),
         "blocks_content": len(content_blocks), "blocks_dropped": len(dropped),

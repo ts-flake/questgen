@@ -146,10 +146,21 @@ and stores each piece on the part it belongs to, mirroring how `marks` already w
           {"no": "(b)", "text": "…", "answer": "$105\\,\\mathrm{cm}^2$", "solution": "…"}]
 ```
 
+**Where an answer lives.** An answer belongs to whatever it actually answers, and it lives in
+exactly one place:
+
+| question | `answer` / `solution` | `parts[].answer` / `parts[].solution` |
+|---|---|---|
+| no sub-parts | the answer | — |
+| sub-parts, key names them | **null** | the answers |
+| sub-parts, key names none (`"$1.60"`) | the answer (not attributable to a part) | — |
+
+So a consumer must read both levels; `export_docx.answer_lines` and `interim_build.has_answer`
+do this and are the ones to reuse. `no_answer` / `no_solution` are judged the same way, or every
+structured question would be flagged as unanswered.
+
 - The cut is an **exact partition**: only the markers and the separators between entries are
   dropped (verified over 346 splits in a real corpus).
-- The entry-level `answer`/`solution` is **regenerated** from the parts, so the summary can never
-  drift from them. Consumers that have not migrated keep working unchanged.
 - A blob with no part markers, or one naming parts that were never segmented, is **left whole** —
   guessing would attach an answer to the wrong sub-question.
 

@@ -604,6 +604,18 @@ def split_answer_area(text: str) -> tuple[str, str | None]:
 _ANS_MARK = re.compile(r"(?:\(\s*[A-Za-z]{1,3}\s*\)|\(\s*\d{1,2}\s*\)){1,3}")
 
 
+def has_answer(entry: dict, field: str = "answer") -> bool:
+    """True when the entry carries `field` at entry level or on any part (answers move onto
+    the parts as soon as a question has sub-parts)."""
+    if (entry.get(field) if field == "solution" else (entry.get("answer") or {}).get("value")):
+        return True
+
+    def walk(ps):
+        return any(p.get(field) or walk(p.get("children") or []) for p in ps or [])
+
+    return walk(entry.get("parts"))
+
+
 def part_paths(parts: list, pre: str = ""):
     """Canonical full paths of every part, in order: '(a)', '(b)', '(b)(i)', …"""
     for p in parts or []:
@@ -650,13 +662,15 @@ def split_by_parts(text: str, labels: list) -> tuple[dict, str]:
 
 
 def apply_part_answers(row: dict) -> None:
-    """Keep the entry-level answer/solution and the per-part ones consistent.
+    """Move a packed answer/solution onto the parts it names.
 
-    Whichever side carries the information drives the other:
-      * parts already answered (a human edited them) -> regenerate the entry summary;
-      * otherwise a packed "(a) …; (b) …" from the answer key -> cut it onto the parts.
-    The parts are the place an answer lives (mirroring `marks`); the entry value is only ever
-    a generated summary, so the two cannot drift apart."""
+    An answer belongs to whatever it actually answers: a question with sub-parts keeps its
+    answers on the parts and holds NOTHING at entry level, so there is exactly one place to
+    read or edit each one. A question with no sub-parts keeps its answer where it is.
+
+    The exception is an answer that names no part at all ("$1.60" on a 3-part question): it
+    answers the question as a whole and cannot be attributed to any part, so it stays at
+    entry level rather than being dropped."""
     labels = list(part_paths(row.get("parts") or []))
     if len(labels) < 2:
         return
@@ -683,13 +697,12 @@ def apply_part_answers(row: dict) -> None:
                 if path in by_path:
                     by_path[path][field] = val
         if not have:
-            continue
-        merged = "; ".join(f"{p} {have[p]}" for p in labels if p in have)
-        merged = f"{lead} {merged}".strip() if lead else merged
+            continue                                    # names no part -> leave it on the entry
         if field == "answer":
-            row["answer"] = dict(row.get("answer") or {}, value=merged)
+            row["answer"] = ({"value": lead, "kind": (row.get("answer") or {}).get("kind", "human")}
+                             if lead else None)
         else:
-            row["solution"] = merged
+            row["solution"] = lead or None
 
 
 def apply_answer_area(row: dict) -> None:
@@ -747,7 +760,14 @@ def validate(entry: dict, img_dir: Path) -> None:
             f.append("image_missing")
     if entry.get("meta", {}).get("unknown_block_types"):
         f.append("unknown_block_type")
-    if entry["solution"] is None:
+    # answers live on the parts once a question has sub-parts, so "answered" must be judged
+    # there too — otherwise every structured question is flagged as missing an answer.
+    def _any_part(field):
+        def walk(ps):
+            return any(p.get(field) or walk(p.get("children") or []) for p in ps or [])
+        return walk(entry.get("parts"))
+
+    if entry["solution"] is None and not _any_part("solution"):
         f.append("no_solution")
-    if entry["answer"] is None:
+    if entry["answer"] is None and not _any_part("answer"):
         f.append("no_answer")

@@ -541,7 +541,7 @@ function rich(txt,fs){ // text -> html: escape, but pass through tables & image 
 // filter runs once per render, and only a page of cards is materialised.
 function searchBlob(e){
   const parts=[];
-  const walk=ps=>(ps||[]).forEach(p=>{parts.push(p.no||'',p.text||'');walk(p.children)});
+  const walk=ps=>(ps||[]).forEach(p=>{parts.push(p.no||'',p.text||'',p.answer||'',p.solution||'');walk(p.children)});
   parts.push(e.stem||''); walk(e.parts);
   if(e.options)Object.entries(e.options).forEach(([k,v])=>parts.push(k,String(v)));
   if(e.answer)parts.push(String(e.answer.value??''));
@@ -946,7 +946,7 @@ function renderEditForm(){
   const partAns=(function any(ps){return (ps||[]).some(p=>p.answer||any(p.children));})(e.parts);
   h+=`<label>${T('答案 answer','Answer')}</label>`
     +`<textarea id="edAns" rows="1"${partAns?' readonly':''} onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc((e.answer&&e.answer.value)||'')}</textarea>`
-    +(partAns?`<div class="hint" style="margin-top:2px">${T('由各子题答案自动汇总 — 请在上面的子题里修改','generated from the sub-part answers — edit them above')}</div>`:'');
+    +(partAns?`<div class="hint" style="margin-top:2px">${T('本题答案存放在各子题中 — 请在上面的子题里填写','this question keeps its answers on the sub-parts — fill them in above')}</div>`:'');
   h+=`<label>${T('答题区 answer_area (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`
     +`<textarea id="edArea" rows="1" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="[ANSWER] cm^2">${esc(e.answer_area||'')}</textarea>`;
   h+=ta(T('解答 solution','Solution'),e.solution,3,'solution');

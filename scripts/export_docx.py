@@ -718,6 +718,28 @@ def _total_row(t, e: dict) -> None:
     below.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
 
+def answer_lines(e: dict) -> list[tuple[str, str, str]]:
+    """[(label, answer, solution)] for one entry, flattened in reading order.
+
+    Answers live on the parts once a question has sub-parts, so an exporter cannot read
+    `entry["answer"]` alone: it holds a value only for a question with no parts (or one whose
+    key named no part at all). Label is "" for the entry-level row."""
+    out = []
+    ans = (e.get("answer") or {}).get("value") or ""
+    if ans or e.get("solution"):
+        out.append(("", str(ans), str(e.get("solution") or "")))
+
+    def walk(parts, pre=""):
+        for p in parts or []:
+            label = pre + (p.get("no") or "")
+            if p.get("answer") or p.get("solution"):
+                out.append((label, str(p.get("answer") or ""), str(p.get("solution") or "")))
+            walk(p.get("children") or [], label)
+
+    walk(e.get("parts"))
+    return out
+
+
 def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, running: dict,
                     teacher: bool = False):
     """Render one question with ONE canonical skeleton (aligned to the gold sample.docx), so
@@ -764,27 +786,22 @@ def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, ru
 
 
 def _teacher_answer(t, e: dict, i: int, mcq_label: str, dirs) -> None:
-    """Teacher copy: the question's answer + solution written right under it, in red."""
+    """Teacher copy: the answer + solution written under the question, in red. A structured
+    question carries one line per sub-part, labelled, since that is where its answers live."""
     sub = lambda s: subst_placeholders(s, i)
-    ans = e.get("answer") or {}
-    val = None
-    if ans.get("value"):
-        val = str(ans["value"])
-        if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-            val = f"${val}$"
-    if val is not None:
-        val = answer_display(e, val, mcq_label)
-        c = _row(t, "")
-        write_rich_line(c.paragraphs[0], "Ans: " + sub(val))
-        _set_red(c)
-        if e.get("solution"):
+    for label, ans, sol in answer_lines(e):
+        if ans:
+            val = ans
+            if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
+                val = f"${val}$"
+            val = answer_display(e, val, mcq_label)
             c = _row(t, "")
-            add_content(c, sub(e["solution"]), dirs, [])
+            write_rich_line(c.paragraphs[0], f"{label} Ans: ".lstrip() + sub(val))
             _set_red(c)
-    elif e.get("solution"):
-        c = _row(t, "")
-        add_content(c, sub(e["solution"]), dirs, [])
-        _set_red(c)
+        if sol:
+            c = _row(t, "")
+            add_content(c, (f"{label} " if label and not ans else "") + sub(sol), dirs, [])
+            _set_red(c)
 
 
 def build_docx(ctx: context.Ctx, entries: list[dict], title: str,
@@ -832,22 +849,25 @@ def build_docx(ctx: context.Ctx, entries: list[dict], title: str,
         st = _grid(doc, (Cm(1.3), Cm(15.2)))
         for i, e in enumerate(entries, 1):
             dirs = entry_img_dirs(ctx, e)
-            ans = e.get("answer") or {}
-            val = None
-            if ans.get("value"):
-                val = str(ans["value"])
-                if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-                    val = f"${val}$"  # bare latex fragment from tail_extract
-            if val is not None:
-                # Ans gets its own table row; solution (if any) follows in a second row.
-                val = answer_display(e, val, mcq_label)      # MCQ label in the export's style
-                write_rich_line(_row(st, f"{i}.").paragraphs[0], "Ans: " + subst_placeholders(val, i))
-                if e.get("solution"):
-                    add_content(_row(st, ""), subst_placeholders(e["solution"], i), dirs, [])
-            elif e.get("solution"):
-                add_content(_row(st, f"{i}."), subst_placeholders(e["solution"], i), dirs, [])
-            else:
+            rows = answer_lines(e)                       # entry-level and/or one per sub-part
+            if not rows:
                 _row(st, f"{i}.").paragraphs[0].add_run("—")
+                continue
+            first = True
+            for label, ans, sol in rows:
+                if ans:
+                    val = ans
+                    if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
+                        val = f"${val}$"  # bare latex fragment from tail_extract
+                    val = answer_display(e, val, mcq_label)   # MCQ label in the export's style
+                    write_rich_line(_row(st, f"{i}." if first else "").paragraphs[0],
+                                    f"{label} Ans: ".lstrip() + subst_placeholders(val, i))
+                    first = False
+                if sol:
+                    add_content(_row(st, f"{i}." if first else ""),
+                                (f"{label} " if label and not ans else "") + subst_placeholders(sol, i),
+                                dirs, [])
+                    first = False
 
     tmp = Path(tempfile.mkdtemp(prefix="questgen_docx_"))
     try:
