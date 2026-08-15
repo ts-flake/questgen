@@ -55,7 +55,7 @@ function injectIcons(root){(root||document).querySelectorAll('[data-ic]').forEac
 // a masked secret field (API token / key) with a show/hide eye toggle
 function secretInput(attrs,value,ph){
   return `<div class="secret"><input type="password" ${attrs} value="${esc(value||'')}" placeholder="${esc(ph||'')}">`
-    +`<button type="button" class="eye" onclick="toggleSecret(this)" title="${T('显示/隐藏','show/hide')}">${IC('eye')}</button></div>`;
+    +`<button type="button" class="eye" onclick="toggleSecret(this)" title="${T('显示/隐藏','Show/hide')}">${IC('eye')}</button></div>`;
 }
 function toggleSecret(btn){const inp=btn.parentNode.querySelector('input');const show=inp.type==='password';inp.type=show?'text':'password';btn.innerHTML=IC(show?'eyeoff':'eye');}
 function applyLang(){
@@ -115,7 +115,7 @@ function showTab(t){tab=t;
 function renderGenRefs(){
   const box=$('gRefs'); if(!box)return;
   if(!REFS.length){box.innerHTML='<div class="hint">'+T('未选参考题 → 按所选 topic 从 bank 随机采 k 题。','No refs picked → k are sampled from the bank by topic.')+'<br>'+T('在 Bank 里点「AI 参考」可指定参考题。','Pick refs with the “AI ref” button in Bank.')+'</div>';return;}
-  box.innerHTML='<div class="hint" style="margin-bottom:3px"><b>'+T('已选参考题','Picked refs')+' '+REFS.length+'</b> '+T('(覆盖随机采样)','(overrides sampling)')+' '
+  box.innerHTML='<div class="hint" style="margin-bottom:3px"><b>'+T('已选参考题','Picked refs')+' '+REFS.length+'</b> '+T('(覆盖随机采样)','(Overrides sampling)')+' '
     +'<button onclick="clearRefs()" style="margin-left:6px">'+T('清空','Clear')+'</button></div>'
     +REFS.map(e=>`<div class="hint" style="display:flex;gap:4px;align-items:center">`
       +`<button class="danger" style="padding:0 5px" onclick="toggleRef('${e.qid}')">${IC('x')}</button>`
@@ -124,7 +124,7 @@ function renderGenRefs(){
 let GENTAX={};
 async function loadGen(){
   if(!PTYPES.length)await loadProblemTypes();
-  {const cur=$('gType').value; $('gType').innerHTML='<option value="">'+T('任意','any')+'</option>'+typeOpts(cur); $('gType').value=cur;}
+  {const cur=$('gType').value; $('gType').innerHTML='<option value="">'+T('任意','Any')+'</option>'+typeOpts(cur); $('gType').value=cur;}
   try{GENTAX=await J('/api/taxonomy?'+qs())}catch(e){GENTAX={}}
   const prev=new Set(selTopics());
   const ids=Object.keys(GENTAX);
@@ -165,7 +165,7 @@ async function toggleRefs(ts){
   if(p.dataset.open==='1'){p.innerHTML='';p.dataset.open='0';return;}
   let ex=[]; try{ex=(await J('/api/gen_refs?'+qs()+'&ts='+encodeURIComponent(ts))).examples||[]}catch(e){}
   if(!ex.length){p.innerHTML='<div class="hint">'+T('该批无参考题记录','No reference questions recorded for this batch')+'</div>';p.dataset.open='1';return;}
-  p.innerHTML='<div class="hint" style="margin:4px 0">'+IC('books')+' '+T('喂给 AI 的参考题','References fed to the AI')+' ('+ex.length+') · '+T('批次','batch')+' '+esc(ts)+'</div>'+ex.map(e=>{
+  p.innerHTML='<div class="hint" style="margin:4px 0">'+IC('books')+' '+T('喂给 AI 的参考题','References fed to the AI')+' ('+ex.length+') · '+T('批次','Batch')+' '+esc(ts)+'</div>'+ex.map(e=>{
     const fs=e.fs||''; const parts=renderParts(e.parts,fs,0);
     const opts=e.options?`<div class="opts">${Object.entries(e.options).map(([k,v])=>`<span class="opt"><b>${esc(optLabel(k))}</b> ${rich(v,fs)}</span>`).join('')}</div>`:'';
     const ans=e.answer?`<div class="hint"><b>Ans:</b> ${rich(String(e.answer),fs)}</div>`:'';
@@ -179,7 +179,7 @@ async function loadPending(){
   if(!ents.length){$('genList').innerHTML=`<div class="hint">${T('待审队列为空。左侧生成新题。','Review queue empty. Generate on the left.')}</div>`;return;}
   const lastTs=ents.map(e=>e.meta&&e.meta.gen&&e.meta.gen.ts).filter(Boolean).sort().slice(-1)[0]||'';
   $('genList').innerHTML='<div class="hint" style="margin-bottom:8px">'+T('待审 '+ents.length+' 题','Pending '+ents.length)
-    +(lastTs?` <button onclick="toggleRefs('${lastTs}')" style="margin-left:8px">${IC('books')}${T('查看参考题','view references')}</button>`:'')
+    +(lastTs?` <button onclick="toggleRefs('${lastTs}')" style="margin-left:8px">${IC('books')}${T('查看参考题','View references')}</button>`:'')
     +'</div><div id="genRefPanel" data-open="0"></div>'+ents.map(e=>{
     const parts=renderParts(e.parts,'ai_generated',0);
     const opts=e.options?`<div class="opts">${Object.entries(e.options).map(([k,v])=>`<span class="opt"><b>${esc(optLabel(k))}</b> ${rich(v,'ai_generated')}</span>`).join('')}</div>`:'';
@@ -188,11 +188,11 @@ async function loadPending(){
         ${e.solution?`<div>${rich(e.solution,'ai_generated')}</div>`:''}</details>`:'';
     const tg=e.tags?`<span class="badge" style="background:var(--tag);color:var(--acc)">${(e.tags.topic||[]).join(',')} · ${e.tags.type||'?'} · ${e.tags.difficulty||'?'}</span>`:'';
     const nov=e.meta&&e.meta.gen&&e.meta.gen.novelty;   // similarity to bank/reference (anti-copy check)
-    const nb=nov?`<span class="badge" title="与已有题最高相似度; 匹配 ${esc(nov.match||'')} (${esc(nov.where||'')})" style="background:${nov.score>=0.5?'var(--coral)':'var(--nobg)'};color:${nov.score>=0.5?'#fff':'var(--dim)'}">${nov.score>=0.5?IC('warn')+' ':''}${T('相似','similar')} ${Math.round(nov.score*100)}%</span>`:'';
+    const nb=nov?`<span class="badge" title="与已有题最高相似度; 匹配 ${esc(nov.match||'')} (${esc(nov.where||'')})" style="background:${nov.score>=0.5?'var(--coral)':'var(--nobg)'};color:${nov.score>=0.5?'#fff':'var(--dim)'}">${nov.score>=0.5?IC('warn')+' ':''}${T('相似','Similar')} ${Math.round(nov.score*100)}%</span>`:'';
     return `<div class="gcard"><div class="hd"><div class="hd-main"><b>${esc(e.qid)}</b> <span class="badge no">AI</span> ${tg} ${nb}</div>
       <div class="hd-act">
-      <button class="okbtn" onclick="genAccept('${e.qid}')">${IC('check')}${T('接受','accept')}</button>
-      <button class="danger" onclick="genReject('${e.qid}')">${IC('x')}${T('拒绝','reject')}</button></div></div>
+      <button class="okbtn" onclick="genAccept('${e.qid}')">${IC('check')}${T('接受','Accept')}</button>
+      <button class="danger" onclick="genReject('${e.qid}')">${IC('x')}${T('拒绝','Reject')}</button></div></div>
       ${e.stem&&e.stem.trim()?`<div>${rich(e.stem,'ai_generated')}</div>`:''}${opts}${parts}${sol}</div>`;
   }).join('');
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([$('genList')]).catch(()=>{});
@@ -221,12 +221,12 @@ async function openSettings(){
   const c=r.config||{}, secs=['gen','llm','vlm'];
   const lnk=k=>{const L=KEY_LINKS[k];return L?` <a href="${L[0]}" target="_blank" rel="noopener" style="color:var(--blue);font-size:11px">${IC('key')} ${esc(L[1])} →</a>`:'';};
   const mineru=`<div class="setSec" data-mineru="1"><h4>MinerU ${T('(PDF 解析云服务)','(PDF extraction cloud)')}${lnk('mineru')}</h4>
-    <label>API token</label>${secretInput('id="setMineru"', r.mineru_token||'', T('留空=不改','empty=keep'))}</div>`;
-  const api=mineru+secs.map(s=>{const d=c[s]||{};const nm={gen:T(' (AI 生成)',' (AI generation)'),llm:T(' (清洗/文本)',' (clean/text)'),vlm:T(' (VLM 读图)',' (VLM figures)')}[s];
+    <label>API token</label>${secretInput('id="setMineru"', r.mineru_token||'', T('留空=不改','Empty=keep'))}</div>`;
+  const api=mineru+secs.map(s=>{const d=c[s]||{};const nm={gen:T(' (AI 生成)',' (AI generation)'),llm:T(' (清洗/文本)',' (Clean/text)'),vlm:T(' (VLM 读图)',' (VLM figures)')}[s];
     return `<div class="setSec" data-sec="${s}"><h4>${s}${nm}${lnk(s)}</h4>
     <label>base_url</label><input type="text" data-f="base_url" value="${esc(d.base_url||'')}">
     <label>model</label><input type="text" data-f="model" value="${esc(d.model||'')}">
-    <label>API key</label>${secretInput('data-f="key"', d.key||'', T('留空=不改','empty=keep'))}
+    <label>API key</label>${secretInput('data-f="key"', d.key||'', T('留空=不改','Empty=keep'))}
     <div class="row" style="margin-top:5px"><label style="margin:0">temperature <input type="text" data-f="temperature" value="${d.temperature!=null?d.temperature:''}" style="width:56px"></label>
       <label style="margin:0"><input type="checkbox" data-f="thinking" ${d.thinking?'checked':''}> thinking</label></div>
   </div>`;}).join('');
@@ -263,8 +263,8 @@ async function loadPipe(){
   const c=p.ctx||{};
   $('pipeCtx').innerHTML=`${IC('pin')} <b>${esc(c.subject||'')}</b> / <b>${esc(c.stage||'')}</b> / <b>${esc(c.level||'')}</b> / <b style="color:var(--acc)">${esc(c.source||'')}</b>`;
   if(pipeSrc!==c.source){pipeSrc=c.source; $('optChem').checked=/^chem/i.test(c.subject||'');}  // auto-suggest per source (covers chemistry/chemestry)
-  $('pipeStat').textContent=(p.mock?'MOCK · ':'')+(p.token?T('token ✓','token ok'):IC('warn')+T(' 无 MinerU token',' no MinerU token'))
-    +' · '+(p.llm?('LLM: '+p.llm):T('⚠ 无 LLM 端点','⚠ no LLM endpoint'))
+  $('pipeStat').textContent=(p.mock?'MOCK · ':'')+(p.token?T('token ✓','Token ok'):IC('warn')+T(' 无 MinerU token',' No MinerU token'))
+    +' · '+(p.llm?('LLM: '+p.llm):T('⚠ 无 LLM 端点','⚠ No LLM endpoint'))
     +' · '+(p.vlm?('VLM: '+p.vlm):T('VLM 未配置','VLM off'))
     +' · DB: '+(p.db?'✓':'—');
   const liveBadge=s=>s?`<span class="badge ok" title="${T('Bank 读取的阶段','Stage the Bank serves')}">${s}</span>`:`<span class="badge no">—</span>`;
@@ -301,14 +301,17 @@ async function runStep(step,opts){
   }catch(e){$('jobLog').textContent='ERROR: '+e}
 }
 function showWarn(r){
+  // every count is bare: the column header / label before it already names the unit, so
+  // nothing here is a sentence-medial fragment needing a lowercase word to read right.
   const k=r.risk||{}, rows=(k.files||[]).map(f=>`<tr><td>${esc(f.file)}</td><td>${f.stage}</td>
-    <td>${f.n} ${T('题','q')}</td><td>${f.edited?'<b style="color:var(--red)">'+f.edited+' '+T('已编辑','edited')+'</b>':'—'}</td>
-    <td>${f.verified?f.verified+' '+T('已验证','verified'):'—'}</td></tr>`).join('');
-  $('warnBody').innerHTML=`<div>${T('步骤','Step')} <b>${esc(k.step||'')}</b> ${T('会重写','will overwrite')}: <b>${esc(k.target||'')}</b></div>
-    <div style="margin:6px 0">${T('当前题库共','This bank has')} <b>${k.entries||0}</b> ${T('题','questions')}`
-    +(k.edited?` · <b style="color:var(--red)">${k.edited} ${T('题有人工编辑','manually edited')}</b>`:'')
-    +(k.verified?` · ${k.verified} ${T('题已验证','verified')}`:'')
-    +` — ${T('重跑后这些人工内容会被覆盖 (无法由重跑还原)。','a re-run overwrites this manual work (not recoverable by re-running).')}</div>
+    <td>${f.n}</td><td>${f.edited?'<b style="color:var(--red)">'+f.edited+'</b>':'—'}</td>
+    <td>${f.verified||'—'}</td></tr>`).join('');
+  $('warnBody').innerHTML=`<div>${T('步骤','Step')}: <b>${esc(k.step||'')}</b></div>
+    <div>${T('会重写','Will overwrite')}: <b>${esc(k.target||'')}</b></div>
+    <div style="margin:6px 0">${T('条目','Entries')}: <b>${k.entries||0}</b>`
+    +(k.edited?` · <b style="color:var(--red)">${T('人工编辑','Edited')}: ${k.edited}</b>`:'')
+    +(k.verified?` · ${T('验证','Verified')}: ${k.verified}`:'')
+    +`<div style="margin-top:4px">${T('重跑后这些人工内容会被覆盖 (无法由重跑还原)。','A re-run overwrites this manual work (not recoverable by re-running).')}</div></div>
     <table><thead><tr><th>${T('文件','File')}</th><th>${T('当前阶段','Stage')}</th><th>${T('条目','Entries')}</th><th>${T('人工编辑','Edited')}</th><th>${T('验证','Verified')}</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="hint" style="margin-top:8px">${T('已有备份','Backups')}: ${r.backups||0}${T(' 份','')}. ${T('备份 = 当前来源 interim/ 的完整快照, 可在 Bank 页「恢复选中备份」回滚。','A backup is a full snapshot of the current source interim/; roll back via “Restore selected” in Bank.')}</div>`;
   $('warnModal').classList.add('on');
@@ -466,7 +469,7 @@ function renderSteps(){
   $('steps').innerHTML=steps.map((s,i)=>`<div class="step" draggable="true" style="cursor:grab"
     ondragstart="dragI=${i}" ondragover="event.preventDefault()" ondrop="dropStep(${i})">
     <div><b>${i+1}.</b> ${s.source.split('/')[1]}
-    <small>${s.pages.length} ${T('页','p')} (${s.pages[0]}–${s.pages[s.pages.length-1]})${s.edits?' · '+Object.keys(s.edits).length+' '+T('页有编辑','pages edited'):''}</small></div>
+    <small>${s.pages.length} ${T('页','P')} (${s.pages[0]}–${s.pages[s.pages.length-1]})${s.edits?' · '+Object.keys(s.edits).length+' '+T('页有编辑','Pages edited'):''}</small></div>
     <span class="x" style="cursor:pointer;color:var(--red)" onclick="steps.splice(${i},1);renderSteps()">${IC('x')}</span></div>`).join('');
 }
 async function save(){
@@ -582,17 +585,17 @@ function refreshBankFilters(keep){
   const topics=[...new Set(BANK.flatMap(e=>(e.tags&&e.tags.topic)||[]))].sort();
   const types=[...new Set(BANK.map(e=>e.tags&&e.tags.type).filter(Boolean))].sort();
   const tv=$('bkTopic').value, yv=$('bkType').value;
-  $('bkTopic').innerHTML='<option value="">'+T('全部 topic','all topics')+'</option>'+topics.map(t=>{const nm=(TAX[t]||{}).name||'';return `<option value="${t}">${t}${nm?' — '+nm:''}</option>`;}).join('');
-  $('bkType').innerHTML='<option value="">'+T('全部题型','all types')+'</option>'+types.map(t=>`<option>${t}</option>`).join('');
+  $('bkTopic').innerHTML='<option value="">'+T('全部 topic','All topics')+'</option>'+topics.map(t=>{const nm=(TAX[t]||{}).name||'';return `<option value="${t}">${t}${nm?' — '+nm:''}</option>`;}).join('');
+  $('bkType').innerHTML='<option value="">'+T('全部题型','All types')+'</option>'+types.map(t=>`<option>${t}</option>`).join('');
   $('bkTopic').value=tv; $('bkType').value=yv;
-  const legend=topics.length?`<details style="margin-top:4px"><summary class="hint">${T('topic 图例','topic legend')} (${topics.length})</summary>`
+  const legend=topics.length?`<details style="margin-top:4px"><summary class="hint">${T('topic 图例','Topic legend')} (${topics.length})</summary>`
     +topics.map(t=>`<div class="hint" style="padding:1px 0"><b style="color:var(--acc)">${t}</b> ${esc((TAX[t]||{}).name||'')}</div>`).join('')+`</details>`:'';
   $('bkLegend').innerHTML=legend;
 }
 async function loadBackups(){
   try{
     const r=await J('/api/backups?'+qs()); const sel=$('bkRestoreSel'); if(!sel)return;
-    sel.innerHTML='<option value="">'+T('— 选择备份 —','— pick a backup —')+'</option>'+
+    sel.innerHTML='<option value="">'+T('— 选择备份 —','— Pick a backup —')+'</option>'+
       (r.backups||[]).map(b=>`<option value="${esc(b.file)}">${esc(b.file.replace(/\\.zip$/,''))} · ${(b.size/1024).toFixed(0)}KB</option>`).join('');
   }catch(e){}
 }
@@ -668,20 +671,20 @@ function cardHeadHtml(e){
   const flags=e.flags.filter(f=>f!=='verified'&&f!=='ai_generated').map(f=>`<span class="fbadge ${/^(llm_patched|rescued|answer_section)/.test(f)?'info':''}">${esc(f)}</span>`).join(' ');
   const topicNames=(e.tags&&e.tags.topic||[]).map(t=>{const nm=(TAX[t]||{}).name||'';return t+(nm?' ('+nm+')':'');}).join('; ');
   const tg=e.tags?`<span class="badge" style="background:var(--tag);color:var(--acc)" title="${esc(topicNames)}">${(e.tags.topic||[]).join(',')} · ${e.tags.type||'?'} · ${e.tags.difficulty||'?'}</span>`:'';
-  const mk=(e.meta&&e.meta.marks!=null)?`<span class="badge no">${e.meta.marks} ${T('分','marks')}</span>`:'';
+  const mk=(e.meta&&e.meta.marks!=null)?`<span class="badge no">${e.meta.marks} ${T('分','Marks')}</span>`:'';
   const uc=useCount(e.qid);
-  const ub=uc?`<span class="badge" style="background:var(--nobg);color:var(--dim)" title="${T('已用于教学','used in teaching')} ${esc((USAGE[e.qid]||{}).last||'')} · ${esc(((USAGE[e.qid]||{}).titles||[]).join(', '))}">${IC('book')} ${T('已用 '+uc+' 次','used '+uc+'×')}</span>`:'';
+  const ub=uc?`<span class="badge" style="background:var(--nobg);color:var(--dim)" title="${T('已用于教学','Used in teaching')} ${esc((USAGE[e.qid]||{}).last||'')} · ${esc(((USAGE[e.qid]||{}).titles||[]).join(', '))}">${IC('book')} ${T('已用 '+uc+' 次','Used '+uc+'×')}</span>`:'';
   return `<div class="hd-main"><b>${inCart?IC('check')+' ':''}${e.qid}</b>
       ${isAI?`<span class="badge" style="background:var(--tag);color:var(--coral)" title="${T('AI 生成','AI generated')}">${IC('sparkles')}AI</span>`:''}
-      ${isVer?`<span class="badge ok" title="${T('已人工验证','human-verified')}">${IC('check')}verified</span>`:''}
+      ${isVer?`<span class="badge ok" title="${T('已人工验证','Human-verified')}">${IC('check')}verified</span>`:''}
       ${ub}
       <span class="badge ${e.cleaned?'ok':'no'}">${e.stage||(e.cleaned?'clean':'raw')}</span>
       <span class="badge no">${e.kind}</span> ${tg} ${mk} ${flags}</div>
       <div class="hd-act">
-      <button class="${isRef(e.qid)?'refbtn':''}" title="${T('加入/移出 AI 生成参考','Add/remove AI-gen reference')}" onclick="toggleRef('${e.qid}')">${IC('clip')}${isRef(e.qid)?T('参考中','ref'):T('AI 参考','AI ref')}</button>
-      <button class="${isVer?'okbtn':''}" title="${T('标记/取消 人工验证','Mark/unmark human-verified')}" onclick="toggleVerified('${e.qid}','${e.file_stem}')">${IC('check')}${isVer?T('已验证','verified'):T('验证','verify')}</button>
+      <button class="${isRef(e.qid)?'refbtn':''}" title="${T('加入/移出 AI 生成参考','Add/remove AI-gen reference')}" onclick="toggleRef('${e.qid}')">${IC('clip')}${isRef(e.qid)?T('参考中','Ref'):T('AI 参考','AI ref')}</button>
+      <button class="${isVer?'okbtn':''}" title="${T('标记/取消 人工验证','Mark/unmark human-verified')}" onclick="toggleVerified('${e.qid}','${e.file_stem}')">${IC('check')}${isVer?T('已验证','Verified'):T('验证','Verify')}</button>
       <button onclick="openEdit('${e.qid}')">${IC('edit')}${T('编辑','Edit')}</button>
-      <button class="${inCart?'danger':''}" onclick="${inCart?'delCartQid':'addCart'}('${e.qid}')">${inCart?IC('x')+T('移除','remove'):IC('plus')+T('选题','add')}</button>
+      <button class="${inCart?'danger':''}" onclick="${inCart?'delCartQid':'addCart'}('${e.qid}')">${inCart?IC('x')+T('移除','Remove'):IC('plus')+T('选题','Add')}</button>
       <button class="danger" title="${T('删除该题 (从所有阶段文件移除)','Delete (from all stage files)')}" onclick="delEntry('${e.qid}','${e.file_stem}')">${IC('trash')}</button></div>`;
 }
 // Update ONE card's header + sel/ver classes in place (no innerHTML rebuild of the list, so
@@ -786,9 +789,9 @@ function renderCart(){
   $('cartList').innerHTML=CART.map((it,i)=>{
     const here=sameSrc(it); const uc=here?useCount(it.qid):0;   // USAGE is current-source only
     return `<div class="cartItem"><span class="lbl${here?' jump':''}"${here?` onclick="jumpToCard('${it.qid}')" title="${T('跳转到该题','Jump to this question')}"`:''}>${i+1}. ${esc(it.qid)}`
-    +(here?'':` <span class="badge no" title="${T('来自','from')} ${esc(it.l)}/${esc(it.src)}">↗${esc(it.src)}</span>`)
-    +(it.mcq?' <span class="badge no">mcq</span>':'')
-    +(uc?` <span class="badge no" title="${T('已用 '+uc+' 次','used '+uc+'×')}">${IC('book')}${uc}</span>`:'')+`</span>
+    +(here?'':` <span class="badge no" title="${T('来自','From')} ${esc(it.l)}/${esc(it.src)}">↗${esc(it.src)}</span>`)
+    +(it.mcq?' <span class="badge no">MCQ</span>':'')
+    +(uc?` <span class="badge no" title="${T('已用 '+uc+' 次','Used '+uc+'×')}">${IC('book')}${uc}</span>`:'')+`</span>
     <span class="btns"><button onclick="mvCart(${i},-1)">↑</button><button onclick="mvCart(${i},1)">↓</button>
     <button class="danger" onclick="delCart(${i})">${IC('x')}</button></span></div>`;}).join('');
 }
@@ -811,8 +814,8 @@ async function exportDocx(){
        log_usage:log})});
     const links=(r.files||[r.file]).map(f=>`<a style="color:var(--acc)" href="/api/download?${qs()}&f=${encodeURIComponent(f)}">${esc(f)}</a>`).join(' · ');
     const openBtn=` <button onclick="openFolder('outputs')" title="${T('在文件管理器中打开输出文件夹','Open the outputs folder')}" style="padding:2px 9px;vertical-align:middle">${IC('folderopen')}${T('打开文件夹','Open folder')}</button>`;
-    $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','q')} → ${links}`+openBtn
-      +(r.logged?' <span class="badge ok">'+IC('book')+' '+T('已记入使用记录','logged')+'</span>':'');
+    $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','Q')} → ${links}`+openBtn
+      +(r.logged?' <span class="badge ok">'+IC('book')+' '+T('已记入使用记录','Logged')+'</span>':'');
     if(r.logged)await refreshUsage();
   }catch(e){$('expMsg').textContent='ERROR: '+e}
 }
@@ -837,8 +840,8 @@ async function loadUsage(){
   let r={}; try{r=await J('/api/usage?'+qs())}catch(e){box.textContent=T('读取失败','Load failed');return}
   USAGE=r.usage||{};
   const n=Object.keys(USAGE).length, tot=Object.values(USAGE).reduce((a,b)=>a+(b.count||0),0);
-  box.innerHTML=`<div style="margin:4px 0">${T('已用','Used')} <b>${n}</b> ${T('题','q')} · ${T('累计','total')} ${tot} ${T('次','×')}</div>`
-    +(r.exports||[]).map(e=>`<div style="padding:1px 0">${esc(e.ts)} · ${esc(e.title||T('(无标题)','(untitled)'))} · ${e.n} ${T('题','q')} <span class="badge no">${esc(e.kind||'')}</span></div>`).join('')
+  box.innerHTML=`<div style="margin:4px 0">${T('已用','Used')} <b>${n}</b> ${T('题','Q')} · ${T('累计','Total')} ${tot} ${T('次','×')}</div>`
+    +(r.exports||[]).map(e=>`<div style="padding:1px 0">${esc(e.ts)} · ${esc(e.title||T('(无标题)','(Untitled)'))} · ${e.n} ${T('题','Q')} <span class="badge no">${esc(e.kind||'')}</span></div>`).join('')
     +`<button class="danger" style="width:100%;margin-top:5px" onclick="clearUsage()">${T('清除本来源的使用记录','Clear usage log for this source')}</button>`;
 }
 async function clearUsage(){
@@ -920,9 +923,9 @@ function renderEditForm(){
 
   let h=`<label>${T('总分 (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
   const curType=(e.tags&&e.tags.type)||'';
-  const legacy=(curType&&!PTYPES.includes(curType))?`<option value="${curType}" selected>${curType} ${T('(旧, 已不在词表)','(legacy, not in vocab)')}</option>`:'';
+  const legacy=(curType&&!PTYPES.includes(curType))?`<option value="${curType}" selected>${curType} ${T('(旧, 已不在词表)','(Legacy, not in vocab)')}</option>`:'';
   h+=`<label>${T('问题类型','Question type (tag)')}</label><select id="edType" style="width:200px">`
-    +`<option value=""${curType?'':' selected'}>${T('(未标注)','(untagged)')}</option>`
+    +`<option value=""${curType?'':' selected'}>${T('(未标注)','(Untagged)')}</option>`
     +typeOpts(curType)+legacy+`</select>`;
   const curDiff=(e.tags&&e.tags.difficulty)||'medium';
   h+=`<label>${T('难度','Difficulty')}</label><select id="edDiff" style="width:160px">`
@@ -936,10 +939,10 @@ function renderEditForm(){
   h+=ta(T('题干 (可空)','Stem (optional)'),e.stem,2,'stem');
   h+=hr;
   h+=`<label>${T('子题 (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
-    +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
+    +`<button onclick="addPart()">${IC('plus')}${T('添加子题','Add part')}</button>`;
 
   h+=hr;
-  h+=`<label>${T('选项 (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','add option')}</button>`;
+  h+=`<label>${T('选项 (MCQ)','Options (MCQ)')}</label><div id="edOpts"></div><button onclick="addOpt()">${IC('plus')}${T('添加选项','Add option')}</button>`;
 
   h+=hr;                                   // answer side, kept contiguous
   // When the parts carry answers they are the source of truth and this box is regenerated
@@ -957,7 +960,7 @@ function renderEditForm(){
   h+=hr;
   h+=`<label>${T('图片 (正文中用 ![](path) 引用)','Images (reference with ![](path))')}</label><div id="edImgList"></div>`
     +`<input type="file" id="edUpload" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="uploadImg(this,null)">`
-    +`<label for="edUpload" class="btnlike">${IC('upload')}${T('上传新图','upload image')}</label>`;
+    +`<label for="edUpload" class="btnlike">${IC('upload')}${T('上传新图','Upload image')}</label>`;
   $('editLeft').innerHTML=h;
   renderEditParts(); renderEditOpts();
 }
@@ -1028,12 +1031,12 @@ function renderEditParts(){
     <div class="epMain">
       <textarea rows="1" data-f="text" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc(p.text)}</textarea>
       <div class="epAns">
-        <label>${T('答案','Answer')}</label><textarea rows="1" data-f="answer" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="${T('该子题答案','answer for this part')}">${esc(p.answer||'')}</textarea>
+        <label>${T('答案','Answer')}</label><textarea rows="1" data-f="answer" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="${T('该子题答案','Answer for this part')}">${esc(p.answer||'')}</textarea>
         <label>${T('答题区','Answer area')}</label><textarea rows="1" data-f="answer_area" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="[ANSWER] cm^2">${esc(p.answer_area||'')}</textarea>
-        <label>${T('解答','Solution')}</label><textarea rows="1" data-f="solution" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="${T('该子题解答','working for this part')}">${esc(p.solution||'')}</textarea>
+        <label>${T('解答','Solution')}</label><textarea rows="1" data-f="solution" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)" placeholder="${T('该子题解答','Working for this part')}">${esc(p.solution||'')}</textarea>
       </div>
     </div>
-    <input class="no" style="width:44px" title="${T('分值','marks')}" placeholder="${T('分','m')}" value="${p.marks!=null?p.marks:''}" data-f="marks">
+    <input class="no" style="width:44px" title="${T('分值','Marks')}" placeholder="${T('分','M')}" value="${p.marks!=null?p.marks:''}" data-f="marks">
     <span style="display:flex;flex-direction:column"><button onclick="movePart(${i},-1)" style="padding:0 5px">↑</button><button onclick="movePart(${i},1)" style="padding:0 5px">↓</button></span>
     <button class="danger" onclick="delPart(${i})">${IC('x')}</button></div>`)
     .join('<div class="edsep sub"></div>');
@@ -1165,7 +1168,7 @@ function renderLivePreview(){
       +`${p.marks?` <span class="ph">[${esc(String(p.marks))}]</span>`:''}${extra}</div>`;
   }).join('');
   box.innerHTML=`<div class="card ver">
-    ${st.stem&&st.stem.trim()?`<div>${rich(st.stem,fs)}</div>`:`<div class="hint">${T('(空题干)','(empty stem)')}</div>`}
+    ${st.stem&&st.stem.trim()?`<div>${rich(st.stem,fs)}</div>`:`<div class="hint">${T('(空题干)','(Empty stem)')}</div>`}
     ${optsHtml}${partsHtml}
     ${(st.answer||st.solution)?`<hr>${st.answer?`<div><b>Ans:</b> ${rich(String(st.answer),fs)}</div>`:''}${st.solution?`<div>${rich(st.solution,fs)}</div>`:''}`:''}
     ${st.answer_area?`<div class="hint">${T('答题区','Answer area')}: ${esc(st.answer_area)}</div>`:''}
@@ -1192,7 +1195,7 @@ async function loadAnswerRef(){
   if(sel<0)sel=ANSREF.findIndex(r=>String(r.qno)===qno);
   const has=sel>=0; if(sel<0)sel=0;
   const opts=ANSREF.map((r,i)=>{const lbl=(r.section?esc(r.section)+' · ':'')+T('题','Q')+' '+esc(r.qno);
-    return `<option value="${i}"${i===sel?' selected':''}>${lbl}${String(r.qno)===qno?T(' (本题)',' (this)'):''}</option>`;}).join('');
+    return `<option value="${i}"${i===sel?' selected':''}>${lbl}${String(r.qno)===qno?T(' (本题)',' (This)'):''}</option>`;}).join('');
   box.innerHTML=`<div style="margin-top:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px">
     <div style="font-size:12px;opacity:.85">${IC('file')} ${T('解答 PDF 提取 · 只读参考','Answer-PDF extraction · read-only')}
       <select id="ansRefSel" onchange="renderAnsRef(this.value)" style="margin-left:6px">${opts}</select></div>
@@ -1204,7 +1207,7 @@ function renderAnsRef(k){
   const r=ANSREF[+k]||{}, body=$('ansRefBody'); if(!body)return;
   const ro=(lbl,val)=>`<div class="hint" style="margin-top:4px">${lbl}</div>`+
     `<textarea readonly onclick="this.select()" style="width:100%;background:rgba(127,127,127,.08)">${esc(val||'')}</textarea>`;
-  let h=ro(T('答案','Answer'), r.answer||T('(无)','(none)'))+ro(T('解答','Solution'), r.solution||T('(无)','(none)'));
+  let h=ro(T('答案','Answer'), r.answer||T('(无)','(None)'))+ro(T('解答','Solution'), r.solution||T('(无)','(None)'));
   if((r.figs||[]).length) h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'+
     r.figs.map(p=>`<img src="/api/img?${qs()}&f=${encodeURIComponent(EDIT.file_stem+'_ans/'+p)}" `+
     `style="max-height:72px;border:1px solid var(--line);border-radius:4px;background:#fff">`).join('')+'</div>';
@@ -1278,7 +1281,7 @@ async function saveEdit(){
   }
 }
 async function delEntryFromEdit(){if(!EDIT)return;const qid=EDIT.qid,stem=EDIT.file_stem;await delEntry(qid,stem);if(!BANK.some(e=>e.qid===qid))closeEdit();}
-function updateEdVerBtn(){const b=$('edVerBtn');if(!b||!EDIT)return;const v=(EDIT.flags||[]).includes('verified');const s=b.querySelector('span');if(s){s.textContent=v?T('已验证','verified'):T('验证','Verify');}b.classList.toggle('okbtn',v);}
+function updateEdVerBtn(){const b=$('edVerBtn');if(!b||!EDIT)return;const v=(EDIT.flags||[]).includes('verified');const s=b.querySelector('span');if(s){s.textContent=v?T('已验证','Verified'):T('验证','Verify');}b.classList.toggle('okbtn',v);}
 async function verifyFromEdit(){if(!EDIT)return;await toggleVerified(EDIT.qid,EDIT.file_stem);const e=BANK.find(x=>x.qid===EDIT.qid);if(e)EDIT.flags=(e.flags||[]).slice();updateEdVerBtn();}
 function closeEdit(){$('editModal').classList.remove('on');EDIT=null;}
 // Ctrl/⌘ + B / I / U inside an edit text box → latex emphasis on the selection

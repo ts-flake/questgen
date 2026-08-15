@@ -1193,7 +1193,7 @@ class H(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
         try:
             if u.path == "/":
-                body = HTML.encode()
+                body = (STATIC_DIR / "index.html").read_text(encoding="utf-8").encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -1514,9 +1514,10 @@ class H(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------- frontend
 
 # UI is a small static frontend under static/ (index.html + dashboard.css + dashboard.js),
-# served by do_GET; index.html is the shell, /static/<file> serves the css/js.
+# served by do_GET; index.html is the shell, /static/<file> serves the css/js. All three are
+# read per request, so an edit shows up on refresh — the shell used to be read at import and
+# needed a restart, which silently served a stale UI while css/js hot-reloaded around it.
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"   # questgen/static (sibling of scripts/)
-HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 STATIC_TYPES = {".css": "text/css", ".js": "application/javascript", ".html": "text/html",
                 ".svg": "image/svg+xml", ".map": "application/json", ".woff2": "font/woff2"}
 
