@@ -87,7 +87,8 @@ def pipeline_status(ctx: context.Ctx) -> dict:
             try:
                 r = json.loads(rp.read_text(encoding="utf-8"))
                 interim = {"questions": r["questions"], "flagged": r["flagged"],
-                           "with_solution": r["with_solution"]}
+                           "with_solution": r["with_solution"],
+                           "warnings": r.get("warnings") or []}   # blocks dropped / 0 questions
             except Exception:
                 interim = {}
         clean = None
@@ -748,14 +749,22 @@ def ai_assist(body: dict) -> dict:
 
 
 def open_in_file_manager(ctx: context.Ctx, which: str) -> dict:
-    """Reveal a source folder (original/ or raw/) in the OS file manager. Restricted to the
-    content tree — this only opens a folder, it never reads or returns file contents."""
-    target = (ctx.raw_dir if which == "raw" else ctx.original_dir).resolve()
+    """Reveal a source folder (original/ or raw/) or the worksheet outputs/ folder in the OS
+    file manager. Restricted to the project's own folders — only opens a folder, never reads
+    or returns file contents."""
+    dirs = {"original": ctx.original_dir, "raw": ctx.raw_dir, "outputs": ctx.outputs_dir}
+    if which not in dirs:
+        raise ValueError("bad which")
+    target = dirs[which].resolve()
     root = context.content_root().resolve()
-    if not (target == root or str(target).startswith(str(root) + os.sep)):
-        raise ValueError("path outside content root")
+    if not (target == root or str(target).startswith(str(root) + os.sep)
+            or target == ctx.outputs_dir.resolve()):
+        raise ValueError("path outside allowed folders")
     if not target.is_dir():
-        raise ValueError(f"folder does not exist: {which}/")
+        if which == "outputs":
+            target.mkdir(parents=True, exist_ok=True)   # created on first export; make it if empty
+        else:
+            raise ValueError(f"folder does not exist: {which}/")
     p = str(target)
     if sys.platform == "darwin":
         subprocess.run(["open", p], check=False)
@@ -1223,6 +1232,7 @@ class H(BaseHTTPRequestHandler):
                     ctype += "; charset=utf-8"
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-cache, must-revalidate")   # never serve stale JS/CSS
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)

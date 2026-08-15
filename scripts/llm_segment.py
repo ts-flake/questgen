@@ -208,6 +208,22 @@ def _block_by_i(blocks: list[dict]) -> dict:
     return {b["_i"]: b for b in blocks}
 
 
+# roman numerals need their own alternative: a bare [a-z] only ever consumed ONE letter, so
+# "(ii)"/"(iii)"/"(iv)" never matched and the marker stayed duplicated in the part text.
+_PART_LABEL = re.compile(r"^\s*\(?\s*(?:[ivx]{2,4}|[a-z])\s*[).]\s*", re.I)
+
+
+def _strip_part_label(txt: str, lab: str) -> str:
+    """Drop the printed sub-part marker from the start of a part's text. Prefer the exact label
+    the labeler reported ("(ii)"); fall back to a generic (a)/(ii)/(iv)/a. style marker."""
+    if lab:
+        m = re.match(r"^\s*" + re.escape(str(lab)) + r"\s*[).]?\s*", txt)
+        if m:
+            return txt[m.end():]
+    m = _PART_LABEL.match(txt)
+    return txt[m.end():] if m else txt
+
+
 def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
     entries, cur, cur_part, cur_section = [], None, None, ""
 
@@ -217,33 +233,20 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
             entries.append(cur)
         cur, cur_part = None, None
 
-    for b in blocks:
-        role = labels.get(b["_i"], {}).get("role", "body")
-        lab = labels.get(b["_i"], {}).get("label", "")
-        txt = b.get("_text") or ""
-        if role == "noise":
-            continue
-        if role == "section":                          # section heading -> numbering restarts here
-            cur_section = re.sub(r"\s+", " ", (lab or txt)).strip()
-            continue
-        if role == "q":
-            close()
-            # strip a leading question number the labeler identified
-            body = txt
-            m = re.match(r"^\s*" + re.escape(str(lab)) + r"[.)\s]\s*", body) if lab else None
-            if m:
-                body = body[m.end():]
-            elif lab:
-                body = re.sub(r"^\s*\d{1,3}[.)\s]\s*", "", body)
-            cur = {"qno": str(lab or len(entries) + 1), "section": cur_section, "stem": body.strip(),
-                   "parts": [], "options": {}, "assets": [], "solution": [],
-                   "pages": {b["page_idx"]}, "blocks": [b["_i"], b["_i"]], "flags": []}
-            cur_part = None
-            continue
-        if cur is None:
-            continue
+    def open_q(b, qno="", stem="", flags=()):
+        nonlocal cur, cur_part
+        close()
+        cur = {"qno": str(qno or len(entries) + 1), "section": cur_section, "stem": stem,
+               "parts": [], "options": {}, "assets": [], "solution": [],
+               "pages": {b["page_idx"]}, "blocks": [b["_i"], b["_i"]], "flags": list(flags)}
+        cur_part = None
+        return cur
+
+    def place(b, role, lab, txt):
+        """Add one content block to the open question (stem/part/option/asset/solution)."""
+        nonlocal cur_part
         cur["pages"].add(b["page_idx"])
-        cur["blocks"][1] = b["_i"]
+        cur["blocks"][1] = max(cur["blocks"][1], b["_i"])
         is_media = b["type"] in ("image", "table", "chart")
         # options first: a table/inline that holds A-D is consumed structurally,
         # its rendered image is redundant (no asset).
@@ -254,7 +257,7 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
                 cur["options"].update(parsed)
             else:
                 cur["options"][lab or _next_opt(cur)] = src
-            continue
+            return
         if is_media:
             # every image/table/chart block carries a rendered img_path -> asset
             cur["assets"].append({"kind": b["type"], "img_path": b.get("img_path", ""),
@@ -265,20 +268,66 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
                 cur_part["text_md"] += "\n" + line
             else:
                 cur["stem"] += "\n" + line
-            continue
+            return
         if role == "solution":
             cur["solution"].append(txt)
-            continue
+            return
         if role == "part":
-            body = re.sub(r"^\s*\(?[a-z]\)?[.)\s]\s*", "", txt) if lab else txt
+            body = _strip_part_label(txt, lab)
             cur_part = {"label": lab or f"({chr(97+len(cur['parts']))})", "text_md": body.strip()}
             cur["parts"].append(cur_part)
-            continue
+            return
         # body
         if cur_part:
             cur_part["text_md"] = (cur_part["text_md"] + "\n" + txt).strip()
         else:
             cur["stem"] = (cur["stem"] + "\n" + txt).strip()
+
+    # --- content before the first "q" is NOT dropped (it used to be, silently) -------------
+    # Two shapes, told apart by whether a sub-part starts there:
+    #   * a "part" appears  -> the paper opens straight at "(a)" with no stem, so no block could
+    #     carry a number: open an IMPLICIT question (flagged) rather than lose the whole thing.
+    #   * only body/figure/option -> that is the following question's context (the labeler put
+    #     "q" on a later sentence): buffer it and merge it into that question, in reading order.
+    roles = {i: labels.get(i, {}).get("role", "body") for i in (b["_i"] for b in blocks)}
+    first_q = next((b["_i"] for b in blocks if roles[b["_i"]] == "q"), None)
+    lead = [b for b in blocks if b["_i"] < (first_q if first_q is not None else 10 ** 9)
+            and roles[b["_i"]] not in ("noise", "section")]
+    lead_is_question = bool(lead) and (any(roles[b["_i"]] == "part" for b in lead) or first_q is None)
+    pending = [] if lead_is_question else list(lead)
+
+    for b in blocks:
+        role = roles[b["_i"]]
+        lab = labels.get(b["_i"], {}).get("label", "")
+        txt = b.get("_text") or ""
+        if role == "noise":
+            continue
+        if role == "section":                          # section heading -> numbering restarts here
+            cur_section = re.sub(r"\s+", " ", (lab or txt)).strip()
+            continue
+        if role == "q":
+            # strip a leading question number the labeler identified
+            body = txt
+            m = re.match(r"^\s*" + re.escape(str(lab)) + r"[.)\s]\s*", body) if lab else None
+            if m:
+                body = body[m.end():]
+            elif lab:
+                body = re.sub(r"^\s*\d{1,3}[.)\s]\s*", "", body)
+            if pending:                                # orphan context -> this question, in order
+                open_q(pending[0], lab, "", ("leading_content_merged",))
+                for pb in pending:
+                    place(pb, roles[pb["_i"]], labels.get(pb["_i"], {}).get("label", ""),
+                          pb.get("_text") or "")
+                place(b, "body", "", body.strip())
+                pending = []
+            else:
+                open_q(b, lab, body.strip())
+            continue
+        if cur is None:
+            if pending:                                # handled when the first "q" arrives
+                continue
+            open_q(b, "", "", ("implicit_question_start",))
+        place(b, role, lab, txt)
     close()
     return entries
 
@@ -490,14 +539,35 @@ def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
         ib.validate(row, ctx.extracted_dir / stem)
         out_rows.append(row)
 
+    # Block accounting: content in, content used. A block the assembler never placed is data
+    # LOST, not "nothing to do" — say so instead of silently reporting a short/empty file.
+    content_blocks = [b["_i"] for b in blocks
+                      if labels.get(b["_i"], {}).get("role", "body") not in ("noise", "section")]
+    used = set()
+    for e in raw:
+        lo, hi = e["blocks"]
+        used |= {i for i in content_blocks if lo <= i <= hi}
+    dropped = [i for i in content_blocks if i not in used]
     report = {
         "file": stem, "questions": len(out_rows), "engine": "llm_segment",
         "with_solution": sum(1 for r in out_rows if r["solution"]),
         "with_answer": sum(1 for r in out_rows if r["answer"]),
         "mcq": sum(1 for r in out_rows if r["kind"] == "mcq"),
         "flagged": sum(1 for r in out_rows if r["flags"]),
+        "blocks_content": len(content_blocks), "blocks_dropped": len(dropped),
         "flags": {},
     }
+    if dropped:
+        report["dropped_block_idx"] = dropped[:50]
+    warns = []
+    if content_blocks and not out_rows:
+        warns.append(f"{len(content_blocks)} content blocks produced 0 questions — nothing entered the bank")
+    elif dropped:
+        warns.append(f"{len(dropped)}/{len(content_blocks)} content blocks were not placed into any question")
+    if warns:
+        report["warnings"] = warns
+        for w in warns:
+            log(f"  !! {stem}: {w}")
     for r in out_rows:
         for fl in r["flags"]:
             report["flags"][fl.split(":")[0]] = report["flags"].get(fl.split(":")[0], 0) + 1

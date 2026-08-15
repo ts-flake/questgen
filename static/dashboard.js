@@ -269,7 +269,9 @@ async function loadPipe(){
   const liveBadge=s=>s?`<span class="badge ok" title="${T('Bank 读取的阶段','stage the Bank serves')}">${s}</span>`:`<span class="badge no">—</span>`;
   $('pipeRows').innerHTML=p.files.map(f=>{
     const it=f.interim, cl=f.clean, tg=f.tagged;
-    const itBadge=it?`<span class="badge ok" title="questions / flagged">${it.questions}q · ${it.with_solution}sol · ${it.flagged}${IC('flag')}</span>`
+    // a run that dropped blocks / produced 0 questions is a data-loss signal, not a quiet "0"
+    const itWarn=it&&(it.warnings||[]).length;
+    const itBadge=it?`<span class="badge ${itWarn?'':'ok'}" style="${itWarn?'background:var(--coral);color:#fff':''}" title="${itWarn?esc(it.warnings.join(' | ')):'questions / flagged'}">${itWarn?IC('warn'):''}${it.questions}q · ${it.with_solution}sol · ${it.flagged}${IC('flag')}</span>`
                     :`<span class="badge no">—</span>`;
     const clBadge=cl?`<span class="badge ok" title="fixed / severe">${cl.fixed??'?'} / ${cl.severe??0}</span>`
                     :`<span class="badge no">—</span>`;
@@ -795,7 +797,8 @@ async function exportDocx(){
        caption:capOpts(),sections:$('expSections').checked,show_total:$('expTotal').checked,
        log_usage:log})});
     const links=(r.files||[r.file]).map(f=>`<a style="color:var(--acc)" href="/api/download?${qs()}&f=${encodeURIComponent(f)}">${esc(f)}</a>`).join(' · ');
-    $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','q')} → ${links}`
+    const openBtn=` <button onclick="openFolder('outputs')" title="${T('在文件管理器中打开输出文件夹','open the outputs folder')}" style="padding:2px 9px;vertical-align:middle">${IC('folderopen')}${T('打开文件夹','Open folder')}</button>`;
+    $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','q')} → ${links}`+openBtn
       +(r.logged?' <span class="badge ok">'+IC('book')+' '+T('已记入使用记录','logged')+'</span>':'');
     if(r.logged)await refreshUsage();
   }catch(e){$('expMsg').textContent='ERROR: '+e}
@@ -869,7 +872,9 @@ function openEdit(qid){
 }
 // manually add a new question — same editor, blank entry, plus topic/difficulty fields
 function openNewEntry(){
-  openEntryEditor({qid:null,stem:'',parts:[],options:null,answer:null,solution:'',
+  // file_stem 'manual' matches where add_entry saves it, so uploaded images land in the right
+  // extraction dir (extracted/manual/images/) and resolve when the entry is saved.
+  openEntryEditor({qid:null,file_stem:'manual',stem:'',parts:[],options:null,answer:null,solution:'',
     tags:{topic:[],type:'',difficulty:'medium'},meta:{},imgs:[],flags:[]}, true);
 }
 function openEntryEditor(e,isNew){
@@ -926,8 +931,8 @@ function renderEditForm(){
   h+=ta(T('解答 solution','Solution'),e.solution,3,'solution');
   h+=`<div id="edAnsRef"></div>`;
   h+=`<label style="margin-top:6px">${T('图片 (marker 用 ![](path) 引用)','Images (reference with ![](path))')}</label><div id="edImgList"></div>`
-    +`<input type="file" id="edUpload" accept="image/*" style="display:none" onchange="uploadImg(this,null)">`
-    +`<button onclick="$('edUpload').click()">${IC('upload')}${T('上传新图','upload image')}</button>`;
+    +`<input type="file" id="edUpload" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="uploadImg(this,null)">`
+    +`<label for="edUpload" class="btnlike">${IC('upload')}${T('上传新图','upload image')}</label>`;
   $('editLeft').innerHTML=h;
   renderEditParts(); renderEditOpts();
 }
@@ -939,8 +944,8 @@ function renderImgs(){
     <div class="insBar" style="flex:1;justify-content:flex-end">
       <button onclick="locateImg(${i})">${T('定位','Locate')}</button>
       <button onclick="insTok('![](${a.path})')">${T('插入','Insert')}</button>
-      <input type="file" accept="image/*" style="display:none" onchange="uploadImg(this,${i})" id="rep${i}">
-      <button onclick="$('rep${i}').click()">${T('替换','Replace')}</button>
+      <input type="file" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="uploadImg(this,${i})" id="rep${i}">
+      <label for="rep${i}" class="btnlike">${T('替换','Replace')}</label>
       <button class="danger" onclick="delImg(${i})">${T('删除','Delete')}</button></div></div>`).join('')
     ||'<div class="hint">'+T('无图片','no images')+'</div>';
 }
@@ -966,7 +971,12 @@ async function uploadImg(input,replaceIdx){
   if(replaceIdx!=null)body.path=EDIT.imgs[replaceIdx].path;
   try{
     const r=await J('/api/upload_img?'+qs(),{method:'POST',body:JSON.stringify(body)});
-    if(replaceIdx==null){EDIT.imgs.push({kind:'image',path:r.path,src:'q'});insTok('![]('+r.path+')');}
+    if(replaceIdx==null){
+      EDIT.imgs.push({kind:'image',path:r.path,src:'q'});
+      // insert into the last-focused field, or fall back to the stem so the marker always lands
+      const ta=(lastTA&&$('editLeft').contains(lastTA))?lastTA:$('editLeft').querySelector('[data-k=stem]');
+      if(ta){lastTA=ta; editInsert(ta,'![]('+r.path+')');}
+    }
     renderImgs();$('edMsg').textContent=replaceIdx!=null?T('已替换','replaced'):T('已上传并插入 marker','uploaded & inserted marker');
   }catch(e){$('edMsg').textContent=T('上传失败: ','Upload failed: ')+e;}
   input.value='';

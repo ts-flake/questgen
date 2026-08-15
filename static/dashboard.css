@@ -35,6 +35,11 @@ h4{font-family:var(--serif);font-weight:600;letter-spacing:-.01em}
 
 /* ---- controls: pill buttons, soft inputs ---- */
 button{background:var(--surface);color:var(--fg);border:1px solid var(--hair);border-radius:9999px;padding:6px 14px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:background .12s,border-color .12s,color .12s;display:inline-flex;align-items:center;justify-content:center;gap:.4em}
+/* a <label for=fileInput> styled as a button — clicking it opens the native file dialog reliably
+   (a programmatic .click() on a display:none file input is blocked in some browsers) */
+.btnlike{background:var(--surface);color:var(--fg);border:1px solid var(--hair);border-radius:9999px;padding:6px 14px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4em;transition:border-color .12s}
+.btnlike:hover{border-color:var(--fg)}
+.insBar .btnlike{font-size:11px;padding:3px 9px}
 select,input,textarea{background:var(--surface);color:var(--fg);border:1px solid var(--hair);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px}
 button:hover{border-color:var(--fg)}
 button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}   /* selected/primary pill: near-black on light, near-white on dark */
@@ -164,7 +169,7 @@ button.refbtn{background:transparent;color:var(--acc);border-color:var(--acc)}
 #editPreview .card{max-width:none;margin:0}
 #editPdf{flex:1 1 50%;min-height:0;overflow:auto;text-align:center;padding:12px}
 #editRight canvas{max-width:100%;background:#fff;margin:6px auto;box-shadow:0 1px 8px rgba(0,0,0,.18);border-radius:8px;display:block}
-#editLeft label{display:block;font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px}
+#editLeft label:not(.btnlike){display:block;font-size:11px;color:var(--dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px}
 #editLeft textarea{display:block;width:100%;background:var(--surface);color:var(--fg);border:1px solid var(--hair);border-radius:8px;padding:8px;font:13px/1.6 var(--sans);resize:vertical;overflow:hidden}
 #editLeft>button{margin:6px 0}#editLeft>input{margin-bottom:3px}
 .epRow{display:flex;gap:6px;align-items:flex-start;margin-bottom:6px}
