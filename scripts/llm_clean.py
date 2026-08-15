@@ -292,21 +292,40 @@ def chat_text(ep: dict, system: str, user: str, retries: int = 2) -> str | None:
     return None
 
 
+# A backslash that JSON does not recognise as an escape introducer. The payload is
+# LaTeX-heavy, and the model intermittently writes "$\ce{C16H34}$" where JSON needs
+# "$\\ce{...}$" — one unescaped backslash makes the WHOLE reply unparseable. Matching
+# valid escapes first means an already-correct "\\ce" is consumed as a unit and left
+# alone; only a lone backslash is doubled.
+_ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|["\\/bfnrt])|\\')
+
+
+def _repair_escapes(txt: str) -> str:
+    return _ESCAPE.sub(lambda m: m.group(0) if len(m.group(0)) > 1 else "\\\\", txt)
+
+
 def _parse_json(txt: str):
     """Extract a JSON value (object OR array) from a model reply, tolerant of
-    ```json fences and surrounding prose."""
+    ```json fences and surrounding prose.
+
+    The fallback decodes the OUTERMOST value only — from the first bracket, with
+    raw_decode so trailing prose is ignored. It never reaches inside a value it
+    could not parse: a clean reply is {"fields":…,"patch":{"parts":[…]}}, and the
+    old array-first regex turned any object that failed the strict parse into its
+    bare parts list, which the caller then read as a patch. A payload we cannot
+    decode is an honest None (the caller retries, then records an llm_error)."""
     txt = re.sub(r"```(?:json)?|```", "", txt).strip()
-    try:
-        return json.loads(txt)
-    except Exception:
-        pass
-    for pat in (r"\[.*\]", r"\{.*\}"):        # array first (labels are arrays)
-        m = re.search(pat, txt, re.S)
+    for s in (txt, _repair_escapes(txt)):
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+        m = re.search(r"[\[{]", s)
         if m:
             try:
-                return json.loads(m.group(0))
-            except Exception:
-                continue
+                return json.JSONDecoder().raw_decode(s, m.start())[0]
+            except ValueError:
+                pass
     return None
 
 
@@ -474,6 +493,42 @@ def _markers(x) -> list[str]:
     return []
 
 
+def _restore_carry(old, new):
+    """Re-attach per-part marks/answers to a patched parts tree, matched by canonical path.
+
+    The prompt view (entry_view -> flatten_parts) shows the model only `no` and `text`, so a
+    parts patch can only ever carry those two — everything else on the part (marks, answer,
+    solution, answer_area) would be dropped on the floor when the patch replaces the tree.
+    A value the rebuild derived from the new text (marks read out of a corrected "[2]") wins,
+    hence setdefault."""
+    import interim_build as ib
+    if not isinstance(new, list):
+        return new
+    keep: dict[str, dict] = {}
+
+    def index(ps, pre=""):
+        for p in ps or []:
+            key = pre + (p.get("no") or "")
+            carry = {k: p[k] for k in ib.PART_CARRY if p.get(k) not in (None, "")}
+            if carry:
+                keep[key] = carry
+            index(p.get("children") or [], key)
+
+    index(old if isinstance(old, list) else [])
+    if not keep:
+        return new
+
+    def restore(ps, pre=""):
+        for p in ps:
+            key = pre + (p.get("no") or "")
+            for k, v in keep.get(key, {}).items():
+                p.setdefault(k, v)
+            restore(p.get("children") or [], key)
+
+    restore(new)
+    return new
+
+
 def _restore_markers(old, new):
     """The LLM can't see figures and drops ![](...) markers it thinks are spurious.
     Re-append any marker present in old but missing from new (append to end of a
@@ -507,6 +562,8 @@ def apply_patch(entry: dict, patch: dict) -> tuple[list[str], list[str], list[st
             continue
         if k in ("stem", "solution", "parts"):
             v = _restore_markers(entry.get(k), v)   # never drop a figure marker
+        if k == "parts":
+            v = _restore_carry(entry.get(k), v)     # never drop marks / per-part answers
         hard, soft = lint_field(k, v)
         if hard:
             rejected.append(f"{k}: {hard}")
@@ -591,7 +648,7 @@ def clean_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None,
                 + f"EXTRACTED ENTRY (its solution may include another question's working — prune it):\n"
                 f"{json.dumps(entry_view(r), ensure_ascii=False)}")
         v = chat(ep, sys_prompt, user, images=imgs or None)
-        if not v or not isinstance(v.get("fields"), dict):
+        if not isinstance(v, dict) or not isinstance(v.get("fields"), dict):
             stats["llm_errors"] += 1
             audit.append({"qid": r["qid"], "verdict": "llm_error"})
             continue
