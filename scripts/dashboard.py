@@ -963,40 +963,6 @@ def bank_entries(ctx: context.Ctx) -> list[dict]:
     return rows
 
 
-def normalize_bank(ctx: context.Ctx, body: dict) -> dict:
-    """One-off migration of this source's interim files onto the current internal label
-    conventions ('(1)' option keys with the answer remapped, parenthesised part labels).
-    Backs up first, and keeps each stem's stage ranking (see _reseal_stage_order)."""
-    backup = None
-    if body.get("backup", True):
-        try:
-            backup = backup_db(ctx, tag="pre-normalize")["file"]
-        except Exception:
-            pass
-    files, n_changed = [], 0
-    for stem in sorted({p.name.split(".")[0] for p in ctx.interim_dir.glob("*.jsonl")}):
-        _live, live_stage = interim_build.newest_stage(ctx, stem)
-        touched = False
-        for _stage, p in interim_build.existing_stages(ctx, stem):
-            rows = _read_jsonl(p)
-            hits = sum(1 for r in rows if interim_build.canon_entry(r))
-            if not hits:
-                continue
-            _write_jsonl(p, rows)
-            files.append(p.name)
-            n_changed += hits
-            touched = True
-        if touched:
-            _reseal_stage_order(ctx, stem, live_stage)
-    return {"ok": True, "files": files, "entries": n_changed, "backup": backup}
-
-
-# ---------------------------------------------------------------- usage log
-# "Used in real teaching" is a decision the user makes AFTER reviewing an export, so it is
-# never inferred: the export panel asks, and only then is it recorded. Kept at stage level
-# (db/usage.json, keyed level/source/qid) so counts survive interim re-runs, restores and
-# re-tagging — they are teaching history, not extraction state.
-
 def _usage_path(ctx: context.Ctx) -> Path:
     return ctx.stage_dir / "db" / "usage.json"
 
@@ -1499,9 +1465,6 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/clear_usage":
                 with LOCK:
                     self._json(clear_usage(ctx, body))
-            elif u.path == "/api/normalize_bank":
-                with LOCK:
-                    self._json(normalize_bank(ctx, body))
             elif u.path == "/api/restore_entry":
                 with LOCK:
                     self._json(restore_entry(ctx, body))

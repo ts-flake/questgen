@@ -102,11 +102,6 @@
       <button class="danger" onclick="restoreDb()" style="width:100%;margin-top:4px" data-ic="restore"><span data-en="Restore selected">恢复选中备份</span></button>
       <div id="bkupMsg" class="hint" style="margin-top:4px"></div>
     </div>
-    <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px">
-      <h4 style="margin:0 0 4px" data-ic="format"><span data-en="Normalize labels">标号规范化</span></h4>
-      <div class="hint" style="margin-bottom:4px" data-en="Unify option keys to (1)(2)(3)(4) and part labels to (a)/(i) (auto-backs up first)">把旧条目的选项标号统一为 (1)(2)(3)(4)、子题标号统一为 (a)/(i) (自动先备份)</div>
-      <button onclick="normalizeBank()" style="width:100%" data-en="Normalize this source">规范化当前来源</button>
-      <div id="bkNormMsg" class="hint" style="margin-top:4px"></div>
     </div>
     <details style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
       <summary class="hint" onclick="setTimeout(loadJournal,0)" data-ic="clock"><span data-en="Edit history (restorable)">编辑历史 (可恢复)</span></summary>
@@ -127,42 +122,9 @@
     <div class="hint"><span data-en="drawn at random from the current filter">从当前筛选结果中随机抽取</span> <button style="font-size:11px" onclick="sortCartMcqFirst()" data-en="MCQ first">MCQ 置前</button></div>
     <div id="cartList"></div>
     <input id="expTitle" placeholder="Worksheet 标题" data-en-ph="Worksheet title">
-    <label class="hint"><span data-en="MCQ option labels (export format; stored as (1)(2))">MCQ 选项标号 (导出格式; 内部统一存 (1)(2))</span><select id="expMcq" style="width:100%">
-      <option value="letter_paren" data-en="(A) (B) letter, paren">(A) (B) 括号字母</option>
-      <option value="letter_dot" data-en="A. B. letter, dot">A. B. 点字母</option>
-      <option value="letter_bare" data-en="A B letter, bare">A B 纯字母</option>
-      <option value="num_paren" data-en="(1) (2) number, paren">(1) (2) 括号数字</option>
-      <option value="num_dot" data-en="1. 2. number, dot">1. 2. 点数字</option>
-      <option value="num_bare" data-en="1 2 number, bare">1 2 纯数字</option></select></label>
-    <label class="hint"><span data-en="[ANSWER] style">[ANSWER] 样式</span><select id="expBlank" style="width:100%">
-      <option value="underscore" data-en="____ underline">____ 下划线</option>
-      <option value="dots" data-en=".... dotted">.... 点线</option></select></label>
-    <details><summary class="hint" data-en="Figure/table caption options">图/表标题 (caption) 选项</summary>
-      <label class="hint"><span data-en="Style">样式</span><select id="capStyle" style="width:100%">
-        <option value="italic" data-en="italic">斜体</option>
-        <option value="bold" data-en="bold">黑体</option>
-        <option value="plain" data-en="plain">普通</option>
-        <option value="none" data-en="no caption">不显示 caption</option></select></label>
-      <label class="hint"><span data-en="Figure label word">图的标签词</span><select id="capFigWord" style="width:100%">
-        <option value="Fig.">Fig.</option>
-        <option value="Figure">Figure</option>
-        <option value="Diagram">Diagram</option>
-        <option value="图">图</option></select></label>
-      <label class="hint"><span data-en="Numbering">编号方式</span><select id="capNumber" style="width:100%">
-        <option value="per_question" data-en="by question (7.2, matches [QN].X in stem)">按题编号 (7.2, 与题干 [QN].X 一致)</option>
-        <option value="continuous" data-en="continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
-        <option value="none" data-en="no numbering">不编号</option></select></label>
-      <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="caption tables too">表格也加 caption</span></label>
-    </details>
-    <label class="hint"><span data-en="Answers">答案格式</span><select id="expAnsFmt" style="width:100%">
-      <option value="none" data-en="no answers">不含答案</option>
-      <option value="end" selected data-en="answers table at end">末尾附答案表格</option>
-      <option value="teacher" data-en="teacher copy (inline, red)">另出教师版 (题+答内联, 红字)</option>
-      <option value="both" data-en="end table + teacher copy">末尾答案表 + 教师版</option></select></label>
-    <label class="hint"><input type="checkbox" id="expMarks"> <span data-en="marks column (3rd col shows marks)">分数栏 (第三栏显示分值)</span></label>
-    <label class="hint"><input type="checkbox" id="expSections" checked> <span data-en="group by type (Section A/B…, sorted by marks)">按题型分区 (Section A/B…, 区内按分值排序)</span></label>
-    <label class="hint"><input type="checkbox" id="expTotal" checked> <span data-en="compute & show total marks">计算并显示全卷总分</span></label>
-    <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="record as used (real teaching)">记录为已用 (实际教学)</span></label>
+    <div class="row" style="margin-top:4px">
+      <button style="flex:1" data-ic="format" onclick="$('expModal').classList.add('on')"><span data-en="Export options…">导出选项…</span></button>
+    </div>
     <button onclick="exportDocx()" data-en="Export .docx">导出 .docx</button>
     <button onclick="markUsed()" style="font-size:11px" data-ic="book"><span data-en="mark used only (no export)">仅标记已用 (不导出)</span></button>
     <div id="expMsg" class="hint"></div>
@@ -259,6 +221,49 @@
     <button class="danger" onclick="$('setModal').classList.remove('on')" data-en="Close">关闭</button></div>
   <div id="setBody"></div>
   <div class="hint" style="padding:8px 14px" data-en="Keys go to config/&lt;section&gt;_key.txt (gitignored); the rest is written back to config.yaml and hot-reloaded.">key 写入 config/&lt;section&gt;_key.txt (已 gitignore); 其余写回 config.yaml 并热重载。</div>
+</div></div>
+<div id="expModal"><div id="expBox">
+  <div class="top"><b style="font-family:var(--serif)" data-ic="format"><span data-en="Export options">导出选项</span></b>
+    <span style="flex:1"></span>
+    <button class="on" onclick="$('expModal').classList.remove('on')" data-en="Done">完成</button></div>
+  <div id="expBody">
+    <label class="hint"><span data-en="MCQ option labels (export format; stored as (1)(2))">MCQ 选项标号 (导出格式; 内部统一存 (1)(2))</span><select id="expMcq" style="width:100%">
+      <option value="letter_paren" data-en="(A) (B) letter, paren">(A) (B) 括号字母</option>
+      <option value="letter_dot" data-en="A. B. letter, dot">A. B. 点字母</option>
+      <option value="letter_bare" data-en="A B letter, bare">A B 纯字母</option>
+      <option value="num_paren" data-en="(1) (2) number, paren">(1) (2) 括号数字</option>
+      <option value="num_dot" data-en="1. 2. number, dot">1. 2. 点数字</option>
+      <option value="num_bare" data-en="1 2 number, bare">1 2 纯数字</option></select></label>
+    <label class="hint"><span data-en="[ANSWER] style">[ANSWER] 样式</span><select id="expBlank" style="width:100%">
+      <option value="underscore" data-en="____ underline">____ 下划线</option>
+      <option value="dots" data-en=".... dotted">.... 点线</option></select></label>
+    <details><summary class="hint" data-en="Figure/table caption options">图/表标题 (caption) 选项</summary>
+      <label class="hint"><span data-en="Style">样式</span><select id="capStyle" style="width:100%">
+        <option value="italic" data-en="italic">斜体</option>
+        <option value="bold" data-en="bold">黑体</option>
+        <option value="plain" data-en="plain">普通</option>
+        <option value="none" data-en="no caption">不显示 caption</option></select></label>
+      <label class="hint"><span data-en="Figure label word">图的标签词</span><select id="capFigWord" style="width:100%">
+        <option value="Fig.">Fig.</option>
+        <option value="Figure">Figure</option>
+        <option value="Diagram">Diagram</option>
+        <option value="图">图</option></select></label>
+      <label class="hint"><span data-en="Numbering">编号方式</span><select id="capNumber" style="width:100%">
+        <option value="per_question" data-en="by question (7.2, matches [QN].X in stem)">按题编号 (7.2, 与题干 [QN].X 一致)</option>
+        <option value="continuous" data-en="continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
+        <option value="none" data-en="no numbering">不编号</option></select></label>
+      <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="caption tables too">表格也加 caption</span></label>
+    </details>
+    <label class="hint"><span data-en="Answers">答案格式</span><select id="expAnsFmt" style="width:100%">
+      <option value="none" data-en="no answers">不含答案</option>
+      <option value="end" selected data-en="answers table at end">末尾附答案表格</option>
+      <option value="teacher" data-en="teacher copy (inline, red)">另出教师版 (题+答内联, 红字)</option>
+      <option value="both" data-en="end table + teacher copy">末尾答案表 + 教师版</option></select></label>
+    <label class="hint"><input type="checkbox" id="expMarks"> <span data-en="marks column (3rd col shows marks)">分数栏 (第三栏显示分值)</span></label>
+    <label class="hint"><input type="checkbox" id="expSections" checked> <span data-en="group by type (Section A/B…, sorted by marks)">按题型分区 (Section A/B…, 区内按分值排序)</span></label>
+    <label class="hint"><input type="checkbox" id="expTotal" checked> <span data-en="compute & show total marks">计算并显示全卷总分</span></label>
+    <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="record as used (real teaching)">记录为已用 (实际教学)</span></label>
+  </div>
 </div></div>
 <div id="aiModal"><div id="aiBox">
   <div class="top"><b style="font-family:var(--serif)" data-ic="sparkles"><span data-en="AI assist">AI 协助</span></b>

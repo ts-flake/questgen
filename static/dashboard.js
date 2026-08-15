@@ -505,6 +505,17 @@ function toggleRef(qid){
 }
 function clearRefs(){REFS=[];renderBank();renderGenRefs();}
 const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function partAnswers(parts,fs,lvl){   // per-part answer/solution, indented like the parts
+  return (parts||[]).map(p=>{
+    const bits=[];
+    if(p.answer)bits.push(`<div><b>Ans:</b> ${rich(String(p.answer),fs)}</div>`);
+    if(p.answer_area)bits.push(`<div class="hint">${T('答题区','Area')}: ${esc(p.answer_area)}</div>`);
+    if(p.solution)bits.push(`<div>${rich(p.solution,fs)}</div>`);
+    const kids=partAnswers(p.children,fs,lvl+1);
+    if(!bits.length&&!kids)return '';
+    return `<div class="part" style="margin-left:${(lvl+1)*1.4}em"><b>${esc(p.no||'')}</b>${bits.join('')}${kids}</div>`;
+  }).join('');
+}
 function renderParts(parts,fs,lvl){ // nested tree -> indented html (recursive)
   return (parts||[]).map(p=>`<div class="part" style="margin-left:${(lvl+1)*1.4}em">`
     +`<b>${esc(p.no||'')}</b> ${rich(p.text,fs)}`
@@ -698,10 +709,12 @@ function renderBank(){
     const isVer=e.flags.includes('verified'), inCart=inCartE(e);
     const opts=e.options?`<div class="opts">${Object.entries(e.options).map(([k,v])=>`<span class="opt"><b>${esc(optLabel(k))}</b> ${rich(v,e.file_stem)}</span>`).join('')}</div>`:'';
     const parts=renderParts(e.parts,e.file_stem,0);
-    const sol=(e.answer||e.solution)?`<details><summary>${T('答案 / 解答','Answer / Solution')}</summary>
-        ${e.answer?`<div><b>Ans:</b> ${rich(String(e.answer.value??''),e.file_stem)} <span class="hint">(${e.answer.kind})</span></div>`:''}
-        ${e.answer&&e.solution?'<hr>':''}
-        ${e.solution?`<div>${rich(e.solution,e.file_stem)}</div>`:''}</details>`:'';
+    const pa=partAnswers(e.parts,e.file_stem,0);
+    const sol=(e.answer||e.solution||pa)?`<details><summary>${T('答案 / 解答','Answer / Solution')}</summary>
+        ${pa||((e.answer?`<div><b>Ans:</b> ${rich(String(e.answer.value??''),e.file_stem)} <span class="hint">(${e.answer.kind})</span></div>`:'')
+              +(e.answer&&e.solution?'<hr>':'')
+              +(e.solution?`<div>${rich(e.solution,e.file_stem)}</div>`:''))}
+        ${e.answer_area?`<div class="hint">${T('答题区','Answer area')}: ${esc(e.answer_area)}</div>`:''}</details>`:'';
     return `<div class="card ${inCart?'sel':''} ${isVer?'ver':''}" data-qid="${e.qid}"><div class="hd">${cardHeadHtml(e)}</div>
       ${e.stem&&e.stem.trim()?`<div>${rich(e.stem,e.file_stem)}</div>`:''}${opts}${parts}${sol}</div>`;
   }).join('')||`<div class="hint">${T('无匹配条目','No matching entries')}</div>`;
@@ -831,15 +844,6 @@ async function clearUsage(){
   if(!confirm(T('清除当前来源的全部使用记录 (次数归零)?','Clear all usage records for this source (counts reset to 0)?')))return;
   try{await J('/api/clear_usage?'+qs(),{method:'POST',body:'{}'});await refreshUsage();loadUsage();}
   catch(e){alert(T('清除失败: ','clear failed: ')+e)}
-}
-async function normalizeBank(){
-  if(!confirm(T('把当前来源的选项标号统一为 (1)(2)(3)(4)、子题标号统一为 (a)/(i)?\\n会先自动备份, 可回滚。','Normalize option labels to (1)(2)(3)(4) and part labels to (a)/(i) for this source?\\nAuto-backs up first so you can roll back.')))return;
-  $('bkNormMsg').textContent=T('处理中…','Working…');
-  try{
-    const r=await J('/api/normalize_bank?'+qs(),{method:'POST',body:JSON.stringify({backup:true})});
-    $('bkNormMsg').textContent=T('规范化','Normalized')+' '+r.entries+' '+T('条','entries')+' ('+r.files.length+' '+T('文件','files')+')'+(r.backup?' · '+T('备份','backup')+' '+r.backup:'');
-    await loadBank(); loadBackups();
-  }catch(e){$('bkNormMsg').textContent=T('失败: ','Failed: ')+e}
 }
 // recovery path for item "编辑丢失": every entry write journals its before/after pair
 async function loadJournal(){
@@ -1142,18 +1146,27 @@ function editFormState(){
   if(!$('editLeft').querySelector('[data-k=stem]'))return null;
   const g=k=>{const el=$('editLeft').querySelector(`[data-k=${k}]`);return el?el.value:'';};
   return {stem:g('stem'),solution:g('solution'),parts:collectParts(),options:collectOpts(),
-    answer:$('edAns')?$('edAns').value:'',marks:$('edTotal')?$('edTotal').value.trim():''};
+    answer:$('edAns')?$('edAns').value:'',marks:$('edTotal')?$('edTotal').value.trim():'',
+    answer_area:$('edArea')?$('edArea').value:''};
 }
 function renderLivePreview(){
   const box=$('editPreview'); if(!box||!EDIT||!LIVE_ON)return;
   const st=editFormState(), fs=EDIT.file_stem;
   if(!st){box.innerHTML='';return;}
   const optsHtml=st.options&&Object.keys(st.options).length?`<div class="opts">${Object.entries(st.options).map(([k,v])=>`<span class="opt"><b>${esc(optLabel(k))}</b> ${rich(v,fs)}</span>`).join('')}</div>`:'';
-  const partsHtml=st.parts.filter(p=>(p.text||'').trim()||(p.no||'').trim()).map(p=>`<div class="part" style="margin-left:1.2em"><b>${esc(p.no||'')}</b> ${rich(p.text||'',fs)}${p.marks?` <span class="ph">[${esc(String(p.marks))}]</span>`:''}</div>`).join('');
+  // the flat editor rows are shown as-is; each carries its own answer/area/solution
+  const partsHtml=st.parts.filter(p=>(p.text||'').trim()||(p.no||'').trim()).map(p=>{
+    const extra=[p.answer?`<div><b>Ans:</b> ${rich(String(p.answer),fs)}</div>`:'',
+                 p.answer_area?`<div class="hint">${T('答题区','Area')}: ${esc(p.answer_area)}</div>`:'',
+                 p.solution?`<div class="hint">${rich(String(p.solution),fs)}</div>`:''].join('');
+    return `<div class="part" style="margin-left:1.2em"><b>${esc(p.no||'')}</b> ${rich(p.text||'',fs)}`
+      +`${p.marks?` <span class="ph">[${esc(String(p.marks))}]</span>`:''}${extra}</div>`;
+  }).join('');
   box.innerHTML=`<div class="card ver">
     ${st.stem&&st.stem.trim()?`<div>${rich(st.stem,fs)}</div>`:`<div class="hint">${T('(空题干)','(empty stem)')}</div>`}
     ${optsHtml}${partsHtml}
     ${(st.answer||st.solution)?`<hr>${st.answer?`<div><b>Ans:</b> ${rich(String(st.answer),fs)}</div>`:''}${st.solution?`<div>${rich(st.solution,fs)}</div>`:''}`:''}
+    ${st.answer_area?`<div class="hint">${T('答题区','Answer area')}: ${esc(st.answer_area)}</div>`:''}
     ${st.marks?`<div class="hint" style="margin-top:4px">${T('总分','Total')}: ${esc(st.marks)}</div>`:''}
     </div>`;
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([box]).catch(()=>{});
