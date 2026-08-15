@@ -128,7 +128,7 @@ async function loadGen(){
   try{GENTAX=await J('/api/taxonomy?'+qs())}catch(e){GENTAX={}}
   const prev=new Set(selTopics());
   const ids=Object.keys(GENTAX);
-  $('gTopicList').innerHTML=ids.length?ids.map(id=>`<label class="chkrow"><input type="checkbox" class="gtopic" value="${id}"${prev.has(id)?' checked':''} onchange="renderObjs()"><span><b>${id}</b> — ${esc((GENTAX[id]||{}).name||'')}</span></label>`).join(''):'<div class="hint" style="padding:6px">'+T('无 taxonomy','no taxonomy')+'</div>';
+  $('gTopicList').innerHTML=ids.length?ids.map(id=>`<label class="chkrow"><input type="checkbox" class="gtopic" value="${id}"${prev.has(id)?' checked':''} onchange="renderObjs()"><span><b>${id}</b> — ${esc((GENTAX[id]||{}).name||'')}</span></label>`).join(''):'<div class="hint" style="padding:6px">'+T('无 taxonomy','No taxonomy')+'</div>';
   renderObjs(); renderGenRefs(); loadPending();
 }
 function selTopics(){return [...document.querySelectorAll('.gtopic:checked')].map(c=>c.value);}
@@ -143,7 +143,7 @@ function renderObjs(){
     if(!los.length)return;
     h+=`<div class="objgrp">${esc(id)}</div>`+los.map(lo=>{const v=id+'::'+lo;return `<label class="chkrow"><input type="checkbox" class="gobj" value="${esc(v)}"${prev.has(v)?' checked':''}><span>${esc(lo)}</span></label>`;}).join('');
   });
-  box.innerHTML=h||'<div class="hint" style="padding:6px">'+T('所选 topic 无学习目标','selected topic has no learning objectives')+'</div>';
+  box.innerHTML=h||'<div class="hint" style="padding:6px">'+T('所选 topic 无学习目标','Selected topic has no learning objectives')+'</div>';
 }
 async function genRun(){
   const topics=selTopics();
@@ -164,8 +164,8 @@ async function toggleRefs(ts){
   const p=$('genRefPanel'); if(!p)return;
   if(p.dataset.open==='1'){p.innerHTML='';p.dataset.open='0';return;}
   let ex=[]; try{ex=(await J('/api/gen_refs?'+qs()+'&ts='+encodeURIComponent(ts))).examples||[]}catch(e){}
-  if(!ex.length){p.innerHTML='<div class="hint">'+T('该批无参考题记录','no reference questions recorded for this batch')+'</div>';p.dataset.open='1';return;}
-  p.innerHTML='<div class="hint" style="margin:4px 0">'+IC('books')+' '+T('喂给 AI 的参考题','references fed to the AI')+' ('+ex.length+') · '+T('批次','batch')+' '+esc(ts)+'</div>'+ex.map(e=>{
+  if(!ex.length){p.innerHTML='<div class="hint">'+T('该批无参考题记录','No reference questions recorded for this batch')+'</div>';p.dataset.open='1';return;}
+  p.innerHTML='<div class="hint" style="margin:4px 0">'+IC('books')+' '+T('喂给 AI 的参考题','References fed to the AI')+' ('+ex.length+') · '+T('批次','batch')+' '+esc(ts)+'</div>'+ex.map(e=>{
     const fs=e.fs||''; const parts=renderParts(e.parts,fs,0);
     const opts=e.options?`<div class="opts">${Object.entries(e.options).map(([k,v])=>`<span class="opt"><b>${esc(optLabel(k))}</b> ${rich(v,fs)}</span>`).join('')}</div>`:'';
     const ans=e.answer?`<div class="hint"><b>Ans:</b> ${rich(String(e.answer),fs)}</div>`:'';
@@ -200,11 +200,11 @@ async function loadPending(){
 async function genAccept(qid){
   try{await J('/api/gen_accept?'+qs(),{method:'POST',body:JSON.stringify({qid})});
     loadPending(); loadSources(true);   // ai_generated source may be new -> refresh dropdown
-  }catch(e){alert(T('accept 失败: ','accept failed: ')+e)}
+  }catch(e){alert(T('accept 失败: ','Accept failed: ')+e)}
 }
 async function genReject(qid){
   try{await J('/api/gen_reject?'+qs(),{method:'POST',body:JSON.stringify({qid})});loadPending();}
-  catch(e){alert(T('reject 失败: ','reject failed: ')+e)}
+  catch(e){alert(T('reject 失败: ','Reject failed: ')+e)}
 }
 // ---------------- settings (two tabs: API keys / models · problem types)
 // registration links per provider so a new user can get a key
@@ -217,7 +217,7 @@ function setTab(w){
     $('setTab_'+t).classList.toggle('on',t===w);});
 }
 async function openSettings(){
-  let r={}; try{r=await J('/api/config')}catch(e){$('setMsg').textContent=T('读取失败','load failed');}
+  let r={}; try{r=await J('/api/config')}catch(e){$('setMsg').textContent=T('读取失败','Load failed');}
   const c=r.config||{}, secs=['gen','llm','vlm'];
   const lnk=k=>{const L=KEY_LINKS[k];return L?` <a href="${L[0]}" target="_blank" rel="noopener" style="color:var(--blue);font-size:11px">${IC('key')} ${esc(L[1])} →</a>`:'';};
   const mineru=`<div class="setSec" data-mineru="1"><h4>MinerU ${T('(PDF 解析云服务)','(PDF extraction cloud)')}${lnk('mineru')}</h4>
@@ -231,7 +231,7 @@ async function openSettings(){
       <label style="margin:0"><input type="checkbox" data-f="thinking" ${d.thinking?'checked':''}> thinking</label></div>
   </div>`;}).join('');
   const types=`<div class="setSec"><h4>${T('问题类型','Problem types')}</h4>
-    <label>${T('逗号分隔 (tag + 生成共用; 仅小写字母/数字/下划线)','comma-separated (used by tag + generation; lowercase a-z0-9_ only)')}</label>
+    <label>${T('逗号分隔 (tag + 生成共用; 仅小写字母/数字/下划线)','Comma-separated (used by tag + generation; lowercase a-z0-9_ only)')}</label>
     <input type="text" id="setTypes" value="${esc((r.problem_types||[]).join(', '))}"></div>`;
   $('setBody').innerHTML=`<div id="setTabs" style="display:flex;gap:8px;margin-bottom:4px">
       <button id="setTab_api" class="on" onclick="setTab('api')">${T('API / 模型','API / Models')}</button>
@@ -267,7 +267,7 @@ async function loadPipe(){
     +' · '+(p.llm?('LLM: '+p.llm):T('⚠ 无 LLM 端点','⚠ no LLM endpoint'))
     +' · '+(p.vlm?('VLM: '+p.vlm):T('VLM 未配置','VLM off'))
     +' · DB: '+(p.db?'✓':'—');
-  const liveBadge=s=>s?`<span class="badge ok" title="${T('Bank 读取的阶段','stage the Bank serves')}">${s}</span>`:`<span class="badge no">—</span>`;
+  const liveBadge=s=>s?`<span class="badge ok" title="${T('Bank 读取的阶段','Stage the Bank serves')}">${s}</span>`:`<span class="badge no">—</span>`;
   $('pipeRows').innerHTML=p.files.map(f=>{
     const it=f.interim, cl=f.clean, tg=f.tagged;
     // a run that dropped blocks / produced 0 questions is a data-loss signal, not a quiet "0"
@@ -297,7 +297,7 @@ async function runStep(step,opts){
     const r=await J('/api/run?'+qs(),{method:'POST',body:JSON.stringify(body)});
     if(r.needs_confirm){WARN={step,files};showWarn(r);return}
     closeWarn();
-    $('jobLog').textContent=r.backup?('['+T('已备份题库','bank backed up')+': '+r.backup+']\n'):'';jobN=0;pollJob()
+    $('jobLog').textContent=r.backup?('['+T('已备份题库','Bank backed up')+': '+r.backup+']\n'):'';jobN=0;pollJob()
   }catch(e){$('jobLog').textContent='ERROR: '+e}
 }
 function showWarn(r){
@@ -334,14 +334,14 @@ async function loadFiles(){
   const li=(f,del)=>`<div class="file ${f.name===curFile?'on':''}" onclick="openFile('${f.name}')">
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name.split('/')[1]}</span>
     <small>${f.pages??'?'}p</small>${del?`<span class="x" onclick="event.stopPropagation();delRaw('${f.name}')">✕</span>`:''}</div>`;
-  const folderBtn=w=>`<button class="foldbtn" onclick="openFolder('${w}')" title="${T('在文件管理器中打开','open in file manager')}">${IC('folderopen')}</button>`;
+  const folderBtn=w=>`<button class="foldbtn" onclick="openFolder('${w}')" title="${T('在文件管理器中打开','Open in file manager')}">${IC('folderopen')}</button>`;
   $('files').innerHTML='<h4>original/ '+folderBtn('original')+'</h4>'+FILES.original.map(f=>li(f,0)).join('')
                       +'<h4>raw/ '+folderBtn('raw')+'</h4>'+FILES.raw.map(f=>li(f,1)).join('');
   refreshOps();
 }
 function openFolder(which){
-  if(!SRC){toast(T('请先选择来源','pick a source first'));return;}
-  J('/api/open_folder?'+qs()+'&which='+which).catch(e=>toast(T('无法打开文件夹','could not open folder')));
+  if(!SRC){toast(T('请先选择来源','Pick a source first'));return;}
+  J('/api/open_folder?'+qs()+'&which='+which).catch(e=>toast(T('无法打开文件夹','Could not open folder')));
 }
 function prefillUpload(){   // seed the upload target from the current source (still editable)
   if(!SRC)return;
@@ -451,11 +451,11 @@ function parseRange(s){const out=[];for(const part of String(s).split(',')){cons
 function setRangeCur(){$('range').value=String(cur);markSel()}
 $('range').addEventListener('input',markSel);
 function addStep(){
-  if(!curFile)return msg(T('先打开一个文件','open a file first'),'bad');
+  if(!curFile)return msg(T('先打开一个文件','Open a file first'),'bad');
   let pages;const rv=$('range').value.trim();
   if(!rv){pages=Array.from({length:num},(_,i)=>i+1)}
   else{try{pages=parseRange(rv)}catch(e){return msg(e,'bad')}}
-  const bad=pages.filter(p=>p<1||p>num);if(bad.length)return msg(T('页码超范围: ','page(s) out of range: ')+bad,'bad');
+  const bad=pages.filter(p=>p<1||p>num);if(bad.length)return msg(T('页码超范围: ','Page(s) out of range: ')+bad,'bad');
   const ed={};for(const p of pages){const e=(edits[curFile]||{})[p];if(e&&(e.crop||(e.masks||[]).length))ed[p]=e}
   steps.push({source:curFile,pages,edits:Object.keys(ed).length?ed:undefined});
   renderSteps();msg('','');
@@ -471,7 +471,7 @@ function renderSteps(){
 }
 async function save(){
   const name=$('outName').value.trim();
-  if(!name)return msg(T('填输出名','enter an output name'),'bad'); if(!steps.length)return msg(T('没有 step','no steps'),'bad');
+  if(!name)return msg(T('填输出名','Enter an output name'),'bad'); if(!steps.length)return msg(T('没有 step','No steps'),'bad');
   $('saveBtn').disabled=true;msg(T('处理中…','Working…'),'');
   try{
     const r=await J('/api/save?'+qs(),{method:'POST',body:JSON.stringify({plan:{output:name.endsWith('.pdf')?name:name+'.pdf',steps}})});
@@ -648,7 +648,7 @@ function jumpToCard(qid){
     const idx=bankFiltered().findIndex(e=>e.qid===qid);
     if(idx>=0){RENDER_N=Math.max(RENDER_N,idx+PAGE);renderBank();el=box.querySelector('[data-qid="'+qid+'"]');}
   }
-  if(!el){toast(T('该题不在当前筛选结果中','not in the current filter'));return;}
+  if(!el){toast(T('该题不在当前筛选结果中','Not in the current filter'));return;}
   el.scrollIntoView({behavior:'smooth',block:'center'});
   el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');   // restart the flash
   setTimeout(()=>{if(el)el.classList.remove('flash')},1600);
@@ -678,11 +678,11 @@ function cardHeadHtml(e){
       <span class="badge ${e.cleaned?'ok':'no'}">${e.stage||(e.cleaned?'clean':'raw')}</span>
       <span class="badge no">${e.kind}</span> ${tg} ${mk} ${flags}</div>
       <div class="hd-act">
-      <button class="${isRef(e.qid)?'refbtn':''}" title="${T('加入/移出 AI 生成参考','add/remove AI-gen reference')}" onclick="toggleRef('${e.qid}')">${IC('clip')}${isRef(e.qid)?T('参考中','ref'):T('AI 参考','AI ref')}</button>
-      <button class="${isVer?'okbtn':''}" title="${T('标记/取消 人工验证','mark/unmark human-verified')}" onclick="toggleVerified('${e.qid}','${e.file_stem}')">${IC('check')}${isVer?T('已验证','verified'):T('验证','verify')}</button>
+      <button class="${isRef(e.qid)?'refbtn':''}" title="${T('加入/移出 AI 生成参考','Add/remove AI-gen reference')}" onclick="toggleRef('${e.qid}')">${IC('clip')}${isRef(e.qid)?T('参考中','ref'):T('AI 参考','AI ref')}</button>
+      <button class="${isVer?'okbtn':''}" title="${T('标记/取消 人工验证','Mark/unmark human-verified')}" onclick="toggleVerified('${e.qid}','${e.file_stem}')">${IC('check')}${isVer?T('已验证','verified'):T('验证','verify')}</button>
       <button onclick="openEdit('${e.qid}')">${IC('edit')}${T('编辑','Edit')}</button>
       <button class="${inCart?'danger':''}" onclick="${inCart?'delCartQid':'addCart'}('${e.qid}')">${inCart?IC('x')+T('移除','remove'):IC('plus')+T('选题','add')}</button>
-      <button class="danger" title="${T('删除该题 (从所有阶段文件移除)','delete (from all stage files)')}" onclick="delEntry('${e.qid}','${e.file_stem}')">${IC('trash')}</button></div>`;
+      <button class="danger" title="${T('删除该题 (从所有阶段文件移除)','Delete (from all stage files)')}" onclick="delEntry('${e.qid}','${e.file_stem}')">${IC('trash')}</button></div>`;
 }
 // Update ONE card's header + sel/ver classes in place (no innerHTML rebuild of the list, so
 // the already-typeset math in the body is untouched → no re-render flash).
@@ -769,7 +769,7 @@ async function toggleVerified(qid,stem){
     const e=BANK.find(x=>x.qid===qid);
     if(e){e.flags=(e.flags||[]).filter(f=>f!=='verified'); if(r.verified)e.flags.push('verified');}
     ($('bkFlag')&&$('bkFlag').value)?renderBank():refreshCard(qid);   // flag filter active → visibility may change
-  }catch(e){alert(T('验证失败: ','verify failed: ')+e)}
+  }catch(e){alert(T('验证失败: ','Verify failed: ')+e)}
 }
 async function delEntry(qid,stem){
   if(!confirm(T('确认删除题目 '+qid+' ?\\n将从所有阶段文件 (tagged/clean/raw) 移除, 不可撤销。','Delete question '+qid+'?\\nRemoved from all stage files (tagged/clean/raw); cannot be undone.')))return;
@@ -778,14 +778,14 @@ async function delEntry(qid,stem){
     BANK=BANK.filter(e=>e.qid!==qid);
     const i=CART.findIndex(it=>sameSrc(it)&&it.qid===qid); if(i>=0)CART.splice(i,1);
     renderCart(); renderBank();
-  }catch(e){alert(T('删除失败: ','delete failed: ')+e)}
+  }catch(e){alert(T('删除失败: ','Delete failed: ')+e)}
 }
 function mvCart(i,d){const j=i+d;if(j<0||j>=CART.length)return;[CART[i],CART[j]]=[CART[j],CART[i]];renderCart()}
 function renderCart(){
   $('cartN').textContent=CART.length;
   $('cartList').innerHTML=CART.map((it,i)=>{
     const here=sameSrc(it); const uc=here?useCount(it.qid):0;   // USAGE is current-source only
-    return `<div class="cartItem"><span class="lbl${here?' jump':''}"${here?` onclick="jumpToCard('${it.qid}')" title="${T('跳转到该题','jump to this question')}"`:''}>${i+1}. ${esc(it.qid)}`
+    return `<div class="cartItem"><span class="lbl${here?' jump':''}"${here?` onclick="jumpToCard('${it.qid}')" title="${T('跳转到该题','Jump to this question')}"`:''}>${i+1}. ${esc(it.qid)}`
     +(here?'':` <span class="badge no" title="${T('来自','from')} ${esc(it.l)}/${esc(it.src)}">↗${esc(it.src)}</span>`)
     +(it.mcq?' <span class="badge no">mcq</span>':'')
     +(uc?` <span class="badge no" title="${T('已用 '+uc+' 次','used '+uc+'×')}">${IC('book')}${uc}</span>`:'')+`</span>
@@ -810,7 +810,7 @@ async function exportDocx(){
        caption:capOpts(),sections:$('expSections').checked,show_total:$('expTotal').checked,
        log_usage:log})});
     const links=(r.files||[r.file]).map(f=>`<a style="color:var(--acc)" href="/api/download?${qs()}&f=${encodeURIComponent(f)}">${esc(f)}</a>`).join(' · ');
-    const openBtn=` <button onclick="openFolder('outputs')" title="${T('在文件管理器中打开输出文件夹','open the outputs folder')}" style="padding:2px 9px;vertical-align:middle">${IC('folderopen')}${T('打开文件夹','Open folder')}</button>`;
+    const openBtn=` <button onclick="openFolder('outputs')" title="${T('在文件管理器中打开输出文件夹','Open the outputs folder')}" style="padding:2px 9px;vertical-align:middle">${IC('folderopen')}${T('打开文件夹','Open folder')}</button>`;
     $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','q')} → ${links}`+openBtn
       +(r.logged?' <span class="badge ok">'+IC('book')+' '+T('已记入使用记录','logged')+'</span>':'');
     if(r.logged)await refreshUsage();
@@ -844,7 +844,7 @@ async function loadUsage(){
 async function clearUsage(){
   if(!confirm(T('清除当前来源的全部使用记录 (次数归零)?','Clear all usage records for this source (counts reset to 0)?')))return;
   try{await J('/api/clear_usage?'+qs(),{method:'POST',body:'{}'});await refreshUsage();loadUsage();}
-  catch(e){alert(T('清除失败: ','clear failed: ')+e)}
+  catch(e){alert(T('清除失败: ','Clear failed: ')+e)}
 }
 // recovery path for item "编辑丢失": every entry write journals its before/after pair
 async function loadJournal(){
@@ -856,14 +856,14 @@ async function loadJournal(){
     ${esc(j.ts)} · <b>${esc(j.kind)}</b> · ${esc(j.qid)}<br>
     <span style="opacity:.8">${esc(j.stem||'')}</span>
     ${j.has_after?`<button style="font-size:11px" onclick="restoreJournal('${esc(j.qid)}','${esc(j.ts)}')">${T('恢复此版本','Restore this version')}</button>`:''}
-    </div>`).join(''):'<div>'+T('暂无记录','no records yet')+'</div>';
+    </div>`).join(''):'<div>'+T('暂无记录','No records yet')+'</div>';
 }
 async function restoreJournal(qid,ts){
   if(!confirm(T('把 '+qid+' 恢复为 '+ts+' 保存的版本?','Restore '+qid+' to the version saved at '+ts+'?')))return;
   try{
     await J('/api/restore_entry?'+qs(),{method:'POST',body:JSON.stringify({qid,ts,which:'after'})});
     await loadBank(); loadJournal();
-  }catch(e){alert(T('恢复失败: ','restore failed: ')+e)}
+  }catch(e){alert(T('恢复失败: ','Restore failed: ')+e)}
 }
 // ---------------- entry edit modal
 let EDIT=null, lastTA=null;
@@ -929,7 +929,7 @@ function renderEditForm(){
     +['basic','medium','advance'].map(d=>`<option value="${d}"${d===curDiff?' selected':''}>${d}</option>`).join('')+`</select>`;
   const curTopics=new Set((e.tags&&e.tags.topic)||[]);
   const tids=Object.keys(TAX||{}).sort();
-  const trows=tids.length?tids.map(id=>`<label class="chkrow"><input type="checkbox" class="edtopic" value="${id}"${curTopics.has(id)?' checked':''}><span><b>${id}</b> ${esc((TAX[id]||{}).name||'')}</span></label>`).join(''):`<div class="hint" style="padding:6px">${T('无 taxonomy','no taxonomy')}</div>`;
+  const trows=tids.length?tids.map(id=>`<label class="chkrow"><input type="checkbox" class="edtopic" value="${id}"${curTopics.has(id)?' checked':''}><span><b>${id}</b> ${esc((TAX[id]||{}).name||'')}</span></label>`).join(''):`<div class="hint" style="padding:6px">${T('无 taxonomy','No taxonomy')}</div>`;
   h+=`<label>${T('主题','Topic')}</label><div id="edTopics" class="chklist" style="max-height:150px">${trows}</div>`;
 
   h+=hr;
@@ -972,7 +972,7 @@ function renderImgs(){
       <input type="file" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" onchange="uploadImg(this,${i})" id="rep${i}">
       <label for="rep${i}" class="btnlike">${T('替换','Replace')}</label>
       <button class="danger" onclick="delImg(${i})">${T('删除','Delete')}</button></div></div>`).join('')
-    ||'<div class="hint">'+T('无图片','no images')+'</div>';
+    ||'<div class="hint">'+T('无图片','No images')+'</div>';
 }
 function locateImg(i){
   const marker='![]('+EDIT.imgs[i].path+')';
@@ -1002,7 +1002,7 @@ async function uploadImg(input,replaceIdx){
       const ta=(lastTA&&$('editLeft').contains(lastTA))?lastTA:$('editLeft').querySelector('[data-k=stem]');
       if(ta){lastTA=ta; editInsert(ta,'![]('+r.path+')');}
     }
-    renderImgs();$('edMsg').textContent=replaceIdx!=null?T('已替换','replaced'):T('已上传并插入引用标记','uploaded & inserted marker');
+    renderImgs();$('edMsg').textContent=replaceIdx!=null?T('已替换','Replaced'):T('已上传并插入引用标记','Uploaded & inserted marker');
   }catch(e){$('edMsg').textContent=T('上传失败: ','Upload failed: ')+e;}
   input.value='';
 }
@@ -1056,7 +1056,7 @@ function renderEditOpts(){
   if(!$('edOpts'))return;
   const o=EDIT.options||{};
   $('edOpts').innerHTML=Object.entries(o).map(([k,v])=>`<div class="epRow">
-    <input class="no" value="${esc(optLabel(k))}" data-ok="1" style="width:56px" title="${T('选项标号 (内部统一 (n) 格式)','option label (stored internally as (n))')}">
+    <input class="no" value="${esc(optLabel(k))}" data-ok="1" style="width:56px" title="${T('选项标号 (内部统一 (n) 格式)','Option label (stored internally as (n))')}">
     <textarea rows="1" style="flex:1" data-ov="1" onfocus="lastTA=this" oninput="lastTA=this">${esc(v)}</textarea>
     <button class="danger" onclick="this.parentNode.remove()">${IC('x')}</button></div>`).join('');
 }
@@ -1083,14 +1083,14 @@ function editInsert(el,text){
   return ok;
 }
 function insTok(tok){
-  const el=lastTA; if(!el){$('edMsg').textContent=T('先点一个文本框','click a text box first');return;}
+  const el=lastTA; if(!el){$('edMsg').textContent=T('先点一个文本框','Click a text box first');return;}
   editInsert(el,tok);
 }
 // ---- AI assist: select text in a field → prompt → LLM → copy / replace / insert ----
 let AI_TA=null, AI_SEL={start:0,end:0};
 function openAiAssist(){
   const el=lastTA;
-  if(!el){$('edMsg').textContent=T('先点一个文本框(可选中一段文本)','click a text box first (optionally select some text)');return;}
+  if(!el){$('edMsg').textContent=T('先点一个文本框(可选中一段文本)','Click a text box first (optionally select some text)');return;}
   AI_TA=el; AI_SEL={start:el.selectionStart??0, end:el.selectionEnd??(el.value||'').length};
   $('aiSel').value=(el.value||'').slice(AI_SEL.start,AI_SEL.end);
   $('aiPrompt').value=''; $('aiOut').value=''; $('aiOutWrap').style.display='none'; $('aiMsg').textContent='';
@@ -1099,18 +1099,18 @@ function openAiAssist(){
 function closeAi(){$('aiModal').classList.remove('on');}
 async function aiRun(){
   const prompt=$('aiPrompt').value.trim();
-  if(!prompt){$('aiMsg').textContent=T('请输入指令','enter an instruction');return;}
-  const btn=$('aiRunBtn'); btn.disabled=true; $('aiMsg').textContent=T('AI 处理中…','thinking…');
+  if(!prompt){$('aiMsg').textContent=T('请输入指令','Enter an instruction');return;}
+  const btn=$('aiRunBtn'); btn.disabled=true; $('aiMsg').textContent=T('AI 处理中…','Thinking…');
   try{
     const r=await J('/api/ai_assist',{method:'POST',body:JSON.stringify({text:$('aiSel').value,prompt})});
     $('aiOut').value=r.output||''; $('aiOutWrap').style.display='block'; $('aiMsg').textContent=''; autoGrow($('aiOut'));
-  }catch(e){$('aiMsg').textContent=T('失败: ','failed: ')+e;}
+  }catch(e){$('aiMsg').textContent=T('失败: ','Failed: ')+e;}
   finally{btn.disabled=false;}
 }
 function aiCopy(){
   const t=$('aiOut').value;
-  if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>$('aiMsg').textContent=T('已复制','copied'),()=>{});
-  else{$('aiOut').select();document.execCommand('copy');$('aiMsg').textContent=T('已复制','copied');}
+  if(navigator.clipboard)navigator.clipboard.writeText(t).then(()=>$('aiMsg').textContent=T('已复制','Copied'),()=>{});
+  else{$('aiOut').select();document.execCommand('copy');$('aiMsg').textContent=T('已复制','Copied');}
 }
 function aiApply(mode){
   const out=$('aiOut').value; if(!AI_TA)return;
@@ -1132,7 +1132,7 @@ function insertTable(){
 // outer $ (so existing math isn't broken).
 const FMT_CMD={bold:'\\textbf',italic:'\\textit',underline:'\\underline'};
 function fmtWrap(kind){
-  const el=lastTA; if(!el){$('edMsg').textContent=T('先选中文本框里的文字','select text in a box first');return;}
+  const el=lastTA; if(!el){$('edMsg').textContent=T('先选中文本框里的文字','Select text in a box first');return;}
   const cmd=FMT_CMD[kind]||'\\textbf';
   const s=el.selectionStart??el.value.length, e=el.selectionEnd??s;
   const sel=el.value.slice(s,e);
@@ -1185,7 +1185,7 @@ async function loadAnswerRef(){
   const stem=EDIT.file_stem, qno=String((EDIT.meta&&EDIT.meta.qno)||''), sec=(EDIT.meta&&EDIT.meta.section)||'';
   try{ANSREF=await J('/api/answer_ref?'+qs()+'&stem='+encodeURIComponent(stem));}catch(e){ANSREF=[];}
   if(!Array.isArray(ANSREF))ANSREF=[];                    // legacy dict sidecar -> ignore
-  if(!ANSREF.length){box.innerHTML='<div class="hint" style="margin-top:6px">'+IC('file')+' '+T('无解答 PDF 提取参考','no answer-PDF extraction reference')+'</div>';return;}
+  if(!ANSREF.length){box.innerHTML='<div class="hint" style="margin-top:6px">'+IC('file')+' '+T('无解答 PDF 提取参考','No answer-PDF extraction reference')+'</div>';return;}
   const norm=s=>String(s||'').replace(/\\W+/g,'').toLowerCase();
   // default: (section,qno) exact -> same qno -> first record
   let sel=sec?ANSREF.findIndex(r=>String(r.qno)===qno&&norm(r.section)===norm(sec)):-1;
@@ -1194,7 +1194,7 @@ async function loadAnswerRef(){
   const opts=ANSREF.map((r,i)=>{const lbl=(r.section?esc(r.section)+' · ':'')+T('题','Q')+' '+esc(r.qno);
     return `<option value="${i}"${i===sel?' selected':''}>${lbl}${String(r.qno)===qno?T(' (本题)',' (this)'):''}</option>`;}).join('');
   box.innerHTML=`<div style="margin-top:8px;border:1px solid var(--line);border-radius:6px;padding:6px 8px">
-    <div style="font-size:12px;opacity:.85">${IC('file')} ${T('解答 PDF 提取 · 只读参考','answer-PDF extraction · read-only')}
+    <div style="font-size:12px;opacity:.85">${IC('file')} ${T('解答 PDF 提取 · 只读参考','Answer-PDF extraction · read-only')}
       <select id="ansRefSel" onchange="renderAnsRef(this.value)" style="margin-left:6px">${opts}</select></div>
     ${has?'':`<div class="hint" style="color:var(--coral);margin-top:3px">${T('本题号 ('+esc(qno)+') 无提取记录 — 可能编号不匹配, 请从上方切换查找','No extraction record for ('+esc(qno)+') — the number may not match; switch above to search')}</div>`}
     <div id="ansRefBody"></div></div>`;
@@ -1214,7 +1214,7 @@ function renderAnsRef(k){
 async function renderEditPdf(){
   const box=$('editPdf');
   const e=EDIT;
-  box.innerHTML=`<div class="hint">${T('加载 PDF…','loading PDF…')}</div>`;
+  box.innerHTML=`<div class="hint">${T('加载 PDF…','Loading PDF…')}</div>`;
   const stem=e.file_stem;
   const f= pdfCur==='ans' ? ('raw/'+stem+'_ans.pdf') : ((e.meta&&e.meta.file)||('raw/'+stem+'.pdf'));
   try{

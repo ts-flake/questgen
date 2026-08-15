@@ -24,7 +24,7 @@
       <button id="mCrop" onclick="setMode('crop')" data-ic="scissors"><span>crop</span></button>
       <button id="mMask" onclick="setMode('mask')" data-ic="square"><span>mask</span></button>
       <button onclick="clearPage()" data-en="clear edits on this page">清除本页编辑</button>
-      <span class="hint" data-en="thumbnails: click=jump, shift+click=set range end">缩略图: 点=跳转, shift+点=设为范围终点</span>
+      <span class="hint" data-en="Thumbnails: click=jump, shift+click=set range end">缩略图: 点=跳转, shift+点=设为范围终点</span>
     </div>
     <div id="stage"><canvas id="pg"></canvas><div id="ov"></div></div>
   </div>
@@ -72,7 +72,7 @@
     <th data-en="raw/ file">raw/ 文件</th><th data-en="size">大小</th><th>extract</th><th>interim</th><th>clean</th><th>tag</th><th data-en="live">当前</th></tr></thead>
   <tbody id="pipeRows"></tbody></table>
   <pre id="jobLog"></pre>
-  <div class="hint" data-en="extract = MinerU cloud (VLM + OCR, keeps $$ formulas / HTML tables). interim = deterministic segment+validate → interim/*.jsonl (the product). ⚑ = items to review, see interim/*.report.json. 当前 = the stage the Bank serves.">extract = MinerU cloud (vlm + OCR, 公式 $$ / 表格 HTML 原样保留)。interim = 确定性分段+校验 → interim/*.jsonl (成品)。⚑ = 待审阅条目, 详见 interim/*.report.json。当前 = Bank 实际读取的阶段。</div>
+  <div class="hint" data-en="extract = MinerU cloud (VLM + OCR, keeps $$ formulas / HTML tables). interim = deterministic segment+validate → interim/*.jsonl (the product). ⚑ = items to review, see interim/*.report.json. The green badge marks the stage the Bank serves.">extract = MinerU cloud (vlm + OCR, 公式 $$ / 表格 HTML 原样保留)。interim = 确定性分段+校验 → interim/*.jsonl (成品)。⚑ = 待审阅条目, 详见 interim/*.report.json。当前 = Bank 实际读取的阶段。</div>
 </div>
 <div id="viewBank">
   <div id="bankFilters">
@@ -118,7 +118,7 @@
     <button class="danger" onclick="CART=[];renderCart();renderBank()" data-en="Clear">清空</button></div>
     <label class="hint"><input type="checkbox" id="optMcqFirst" checked onchange="if(this.checked)sortCartMcqFirst()"> <span data-en="MCQ first">MCQ 排在最前</span></label>
     <label class="hint"><input type="checkbox" id="optFresh" checked> <span data-en="prefer unused">优先未用过的题</span></label>
-    <div class="hint"><span data-en="drawn at random from the current filter">从当前筛选结果中随机抽取</span> <button style="font-size:11px" onclick="sortCartMcqFirst()" data-en="MCQ first">MCQ 置前</button></div>
+    <div class="hint"><span data-en="Drawn at random from the current filter">从当前筛选结果中随机抽取</span> <button style="font-size:11px" onclick="sortCartMcqFirst()" data-en="MCQ first">MCQ 置前</button></div>
     <div id="cartList"></div>
     <input id="expTitle" placeholder="Worksheet 标题" data-en-ph="Worksheet title">
     <div class="row" style="margin-top:4px">
