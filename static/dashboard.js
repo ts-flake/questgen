@@ -910,14 +910,11 @@ window.addEventListener('resize',()=>{if($('editModal').classList.contains('on')
 function renderEditForm(){
   const e=EDIT;
   const hr=`<div class="edsep"></div>`;
-  // Order follows how a question is actually reviewed: what it IS (stem), how it is
-  // classified (marks/type/topic/difficulty), what it asks (parts, options), then the
-  // answer side kept together — answer / answer area / solution were previously split
-  // apart by the tagging fields sitting between them.
-  let h=ta(T('题干 stem (可空)','Stem (optional)'),e.stem,2,'stem');
+  // Section order: classification first (marks/type/difficulty/topic), then the stem, what
+  // it asks (parts, options), then the answer side kept contiguous — answer / answer area /
+  // solution used to be split apart by the tagging fields sitting between them.
 
-  h+=hr;
-  h+=`<label>${T('总分 total marks (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
+  let h=`<label>${T('总分 total marks (可空)','Total marks (optional)')}</label><input id="edTotal" style="width:90px" value="${(e.meta&&e.meta.marks!=null)?e.meta.marks:''}">`;
   const curType=(e.tags&&e.tags.type)||'';
   const legacy=(curType&&!PTYPES.includes(curType))?`<option value="${curType}" selected>${curType} ${T('(旧, 已不在词表)','(legacy, not in vocab)')}</option>`:'';
   h+=`<label>${T('问题类型 type (tag)','Question type (tag)')}</label><select id="edType" style="width:200px">`
@@ -931,6 +928,8 @@ function renderEditForm(){
   const trows=tids.length?tids.map(id=>`<label class="chkrow"><input type="checkbox" class="edtopic" value="${id}"${curTopics.has(id)?' checked':''}><span><b>${id}</b> ${esc((TAX[id]||{}).name||'')}</span></label>`).join(''):`<div class="hint" style="padding:6px">${T('无 taxonomy','no taxonomy')}</div>`;
   h+=`<label>${T('主题 topic','Topic')}</label><div id="edTopics" class="chklist" style="max-height:150px">${trows}</div>`;
 
+  h+=hr;
+  h+=ta(T('题干 stem (可空)','Stem (optional)'),e.stem,2,'stem');
   h+=hr;
   h+=`<label>${T('子题 parts (标号用完整路径如 (a)、(b)(i); 或 a,i; 或 a/i; 保存时自动嵌套)','Parts (use full labels e.g. (a), (b)(i); a,i; a/i; auto-nested on save)')}</label><div id="edParts"></div>`
     +`<button onclick="addPart()">${IC('plus')}${T('添加子题','add part')}</button>`;
@@ -1012,17 +1011,22 @@ function toggleLivePrev(){
 }
 function renderEditParts(){
   const flat=EDIT._pf||flatEditParts(EDIT.parts); EDIT._pf=null;
+  // label | [ text + answer fields ] | marks | move | delete — the text and the answer
+  // fields share one column, so they line up without hard-coding the controls' width.
   $('edParts').innerHTML=flat.map((p,i)=>`<div class="epRow">
     <input class="no" value="${esc(p.no)}" data-f="no">
-    <textarea rows="1" style="flex:1" data-f="text" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc(p.text)}</textarea>
+    <div class="epMain">
+      <textarea rows="1" data-f="text" onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc(p.text)}</textarea>
+      <div class="epAns">
+        <label>${T('答案','Answer')}</label><input data-f="answer" value="${esc(p.answer||'')}" placeholder="${T('该子题答案','answer for this part')}">
+        <label>${T('答题区','Answer area')}</label><input data-f="answer_area" value="${esc(p.answer_area||'')}" placeholder="[ANSWER] cm^2">
+        <label>${T('解答','Solution')}</label><input data-f="solution" value="${esc(p.solution||'')}" placeholder="${T('该子题解答','working for this part')}">
+      </div>
+    </div>
     <input class="no" style="width:44px" title="${T('分值','marks')}" placeholder="${T('分','m')}" value="${p.marks!=null?p.marks:''}" data-f="marks">
     <span style="display:flex;flex-direction:column"><button onclick="movePart(${i},-1)" style="padding:0 5px">↑</button><button onclick="movePart(${i},1)" style="padding:0 5px">↓</button></span>
-    <button class="danger" onclick="delPart(${i})">${IC('x')}</button>
-    <div class="epAns">
-      <label>${T('答案','Answer')}</label><input data-f="answer" value="${esc(p.answer||'')}" placeholder="${T('该子题答案','answer for this part')}">
-      <label>${T('答题区','Answer area')}</label><input data-f="answer_area" value="${esc(p.answer_area||'')}" placeholder="[ANSWER] cm^2">
-      <label>${T('解答','Solution')}</label><input data-f="solution" value="${esc(p.solution||'')}" placeholder="${T('该子题解答','working for this part')}">
-    </div></div>`).join('<div class="edsep sub"></div>');
+    <button class="danger" onclick="delPart(${i})">${IC('x')}</button></div>`)
+    .join('<div class="edsep sub"></div>');
   $('edParts').querySelectorAll('textarea').forEach(autoGrow);
 }
 function collectParts(){

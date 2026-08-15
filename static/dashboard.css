@@ -240,12 +240,14 @@ body.dark ::-webkit-scrollbar-thumb:hover{background:#4d5560;background-clip:pad
 
 /* per-part answer / answer-area / solution: one field per line under the part text, so a
    long answer is readable instead of squeezed into a third of the row */
-.epAns{flex:1 0 100%;display:grid;grid-template-columns:auto 1fr;align-items:center;
-       gap:4px 8px;margin:4px 0 2px 76px}
+.epMain{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.epMain textarea{width:100%}
+.epAns{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 8px;
+       padding-left:8px}
 .epAns label{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;
              letter-spacing:.04em;margin:0;white-space:nowrap;text-align:right}
 .epAns input{width:100%;padding:4px 8px;font-size:12px;border:1px solid var(--hair);
              border-radius:6px;background:var(--surface);color:var(--fg)}
 /* section rule inside the edit form; "sub" is the lighter one between sub-questions */
 .edsep{border-top:1px solid var(--line);margin:16px 0 4px}
-.edsep.sub{border-top:1px dashed var(--hair);margin:10px 0 10px 76px}
+.edsep.sub{border-top:1px dashed var(--hair);margin:10px 0}
