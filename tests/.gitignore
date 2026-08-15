@@ -1,0 +1,4 @@
+# Fixtures + blessed outputs contain real exam text (third-party copyright).
+# They stay on your machine; the harness itself is what's version-controlled.
+fixtures/
+expected/
