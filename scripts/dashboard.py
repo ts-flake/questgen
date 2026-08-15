@@ -1432,8 +1432,8 @@ class H(BaseHTTPRequestHandler):
                 if not entries:
                     raise ValueError("no valid qids")
                 out = ctx.outputs_dir / f"{title}.docx"
-                mcq = str(body.get("mcq_label") or "letter_paren")
-                blank = str(body.get("blank") or "underscore")
+                mcq = str(body.get("mcq_label") or "letter_bare")
+                blank = str(body.get("blank") or "dots")
                 cap = body.get("caption") if isinstance(body.get("caption"), dict) else {}
                 # answer_format: none | end (answers table appended) | teacher (separate red
                 # inline copy) | both. `with_solutions` kept for back-compat (= "end").

@@ -180,7 +180,7 @@ BLANK_FILL = "_" * 12          # set per export by build_docx (underscore vs dot
 # figure/table caption options, set per export by build_docx (see CAPTION_DEFAULTS)
 CAPTION: dict = {}
 CAPTION_DEFAULTS = {
-    "style": "italic",      # "italic" | "bold" | "plain" | "none" (none = no captions)
+    "style": "bold",        # "italic" | "bold" | "plain" | "none" (none = no captions)
     "fig_word": "Fig.",     # word used for figures ("Fig." / "Figure" / "Diagram" / "图")
     "table_word": "Table",  # word used for tables
     "tables": True,         # caption tables too, or figures only
@@ -806,9 +806,9 @@ def _teacher_answer(t, e: dict, i: int, mcq_label: str, dirs) -> None:
 
 def build_docx(ctx: context.Ctx, entries: list[dict], title: str,
                with_solutions: bool, out_path: Path,
-               mcq_label: str = "letter_paren", blank: str = "underscore",
+               mcq_label: str = "letter_bare", blank: str = "dots",
                marks_col: bool = False, caption: dict | None = None,
-               sections: bool = False, show_total: bool = False, teacher: bool = False) -> Path:
+               sections: bool = True, show_total: bool = True, teacher: bool = False) -> Path:
     global BLANK_FILL, CAPTION
     BLANK_FILL = "_" * 12 if blank == "underscore" else "." * 16
     CAPTION = {**CAPTION_DEFAULTS, **{k: v for k, v in (caption or {}).items() if v is not None}}

@@ -230,30 +230,28 @@
     <label class="hint"><span data-en="MCQ option labels (export format; stored as (1)(2))">MCQ 选项标号 (导出格式; 内部统一存 (1)(2))</span><select id="expMcq" style="width:100%">
       <option value="letter_paren" data-en="(A) (B) letter, paren">(A) (B) 括号字母</option>
       <option value="letter_dot" data-en="A. B. letter, dot">A. B. 点字母</option>
-      <option value="letter_bare" data-en="A B letter, bare">A B 纯字母</option>
+      <option value="letter_bare" selected data-en="A B letter, bare">A B 纯字母</option>
       <option value="num_paren" data-en="(1) (2) number, paren">(1) (2) 括号数字</option>
       <option value="num_dot" data-en="1. 2. number, dot">1. 2. 点数字</option>
       <option value="num_bare" data-en="1 2 number, bare">1 2 纯数字</option></select></label>
     <label class="hint"><span data-en="[ANSWER] style">[ANSWER] 样式</span><select id="expBlank" style="width:100%">
       <option value="underscore" data-en="____ underline">____ 下划线</option>
-      <option value="dots" data-en=".... dotted">.... 点线</option></select></label>
-    <div class="hint" style="margin-top:2px" data-en="Figure/table caption options">图/表标题 (caption) 选项</div>
-      <label class="hint"><span data-en="Style">样式</span><select id="capStyle" style="width:100%">
-        <option value="italic" data-en="italic">斜体</option>
-        <option value="bold" data-en="bold">黑体</option>
-        <option value="plain" data-en="plain">普通</option>
-        <option value="none" data-en="no caption">不显示 caption</option></select></label>
-      <label class="hint"><span data-en="Figure label word">图的标签词</span><select id="capFigWord" style="width:100%">
-        <option value="Fig.">Fig.</option>
-        <option value="Figure">Figure</option>
-        <option value="Diagram">Diagram</option>
-        <option value="图">图</option></select></label>
-      <label class="hint"><span data-en="Numbering">编号方式</span><select id="capNumber" style="width:100%">
-        <option value="per_question" data-en="by question (7.2, matches [QN].X in stem)">按题编号 (7.2, 与题干 [QN].X 一致)</option>
-        <option value="continuous" data-en="continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
-        <option value="none" data-en="no numbering">不编号</option></select></label>
-      <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="caption tables too">表格也加 caption</span></label>
-    
+      <option value="dots" selected data-en=".... dotted">.... 点线</option></select></label>
+    <label class="hint"><span data-en="Figure/table caption style">图/表标题 (caption) 样式</span><select id="capStyle" style="width:100%">
+      <option value="italic" data-en="italic">斜体</option>
+      <option value="bold" selected data-en="bold">黑体</option>
+      <option value="plain" data-en="plain">普通</option>
+      <option value="none" data-en="no caption">不显示 caption</option></select></label>
+    <label class="hint"><span data-en="Figure label word">图的标签词</span><select id="capFigWord" style="width:100%">
+      <option value="Fig.">Fig.</option>
+      <option value="Figure">Figure</option>
+      <option value="Diagram">Diagram</option>
+      <option value="图">图</option></select></label>
+    <label class="hint"><span data-en="Caption numbering">caption 编号方式</span><select id="capNumber" style="width:100%">
+      <option value="per_question" data-en="by question (7.2, matches [QN].X in stem)">按题编号 (7.2, 与题干 [QN].X 一致)</option>
+      <option value="continuous" data-en="continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
+      <option value="none" data-en="no numbering">不编号</option></select></label>
+    <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="caption tables too">表格也加 caption</span></label>
     <label class="hint"><span data-en="Answers">答案格式</span><select id="expAnsFmt" style="width:100%">
       <option value="none" data-en="no answers">不含答案</option>
       <option value="end" selected data-en="answers table at end">末尾附答案表格</option>

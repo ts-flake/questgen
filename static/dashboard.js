@@ -793,7 +793,7 @@ function renderCart(){
     <button class="danger" onclick="delCart(${i})">${IC('x')}</button></span></div>`;}).join('');
 }
 function capOpts(){
-  return {style:$('capStyle')?$('capStyle').value:'italic',
+  return {style:$('capStyle')?$('capStyle').value:'bold',
           fig_word:$('capFigWord')?$('capFigWord').value:'Fig.',
           number:$('capNumber')?$('capNumber').value:'per_question',
           tables:$('capTables')?$('capTables').checked:true};
