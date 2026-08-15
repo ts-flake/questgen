@@ -47,6 +47,7 @@ const ICONS={
  table:'<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
  edit:'<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/><path d="m15 5 4 4"/>',
  flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+ info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
  folderopen:'<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>'
 };
 function IC(name,extra){return '<svg class="ic'+(extra?' '+extra:'')+'" viewBox="0 0 24 24" aria-hidden="true">'+(ICONS[name]||'')+'</svg>';}
@@ -945,7 +946,7 @@ function renderEditForm(){
   // from them on save — say so instead of silently discarding what was typed here.
   const partAns=(function any(ps){return (ps||[]).some(p=>p.answer||any(p.children));})(e.parts);
   // the note goes ABOVE the box: it explains why the box is empty before you look at it
-  h+=(partAns?`<div class="hint" style="margin-top:10px">${T('本题答案存放在各子题中 — 请在上面的子题里填写','this question keeps its answers on the sub-parts — fill them in above')}</div>`:'')
+  h+=(partAns?`<div class="note" style="margin-top:10px">${IC('info')}<span>${T('本题答案存放在各子题中 — 请在上面的子题里填写','this question keeps its answers on the sub-parts — fill them in above')}</span></div>`:'')
     +`<label${partAns?' style="margin-top:2px"':''}>${T('答案','Answer')}</label>`
     +`<textarea id="edAns" rows="1"${partAns?' readonly':''} onfocus="lastTA=this" oninput="lastTA=this;autoGrow(this)">${esc((e.answer&&e.answer.value)||'')}</textarea>`;
   h+=`<label>${T('答题区 (占位符 + 单位/符号)','Answer area (placeholder + unit/symbol)')}</label>`

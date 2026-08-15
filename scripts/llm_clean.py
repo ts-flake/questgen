@@ -77,8 +77,15 @@ latex — as long as the content stays faithful to the source. You MUST NOT inve
    Wrong: "$12.50 = 1250¢"  (unbalanced $)   Right: "\\$12.50 = 1250¢"
    Never wrap plain English sentences in latex; never use \\text{...} for normal sentences;
    plain numbers and words need no wrapping. Keep HTML <table> as-is. Use ¢ (unicode), not \\cent.
-4. Escaped currency: dollar amounts in text stay as \\$ (e.g. \\$150); they are NOT math delimiters.
-5. Answer-blank placeholder: a fill-in-the-blank for the student's answer. It appears as underscores
+4. Units inside math are UPRIGHT: a unit symbol is not a variable, so wrap it in \\mathrm and keep
+   the thin space before it. Collapse the braces on a simple exponent.
+   Wrong: "$0.25 \\, dm^{3}$"   Right: "$0.25\\,\\mathrm{dm^3}$"
+   Wrong: "$9.8 m s^{-2}$"      Right: "$9.8\\,\\mathrm{m\\,s^{-2}}$"
+   Wrong: "$25 cm^{2}$"         Right: "$25\\,\\mathrm{cm^2}$"
+   This is only for UNITS (m, cm, kg, s, N, J, mol, dm^3, °C ...). Algebraic variables stay italic:
+   "$x^{2}$", "$v = u + at$" are already correct — never wrap those in \\mathrm.
+5. Escaped currency: dollar amounts in text stay as \\$ (e.g. \\$150); they are NOT math delimiters.
+6. Answer-blank placeholder: a fill-in-the-blank for the student's answer. It appears as underscores
    ("Ans: ____", "$____", "____cm") OR dot-leaders (exam style: "v = ........ m", "……"). KEEP it (it
    drives the docx exam layout) but normalize the blank run to the token [ANSWER]. Exam answer lines
    are usually "<symbol> = [ANSWER] <unit>" — preserve the symbol, "=", and unit in place. Never
@@ -87,7 +94,7 @@ latex — as long as the content stays faithful to the source. You MUST NOT inve
 FIG. Figure/table references "Fig N.X" / "Figure N.X" / "Table N.X" in the text: keep them but write
    "figure [QN].X" / "table [QN].X" — replace the source's leading number N with the literal token
    [QN] (a placeholder for this question's number), keep X. Never delete [QN] once present.
-6. options: keys are the option labels IN THE PAPER'S ORDER, written "(1)","(2)","(3)","(4)" — the
+7. options: keys are the option labels IN THE PAPER'S ORDER, written "(1)","(2)","(3)","(4)" — the
    bank's internal convention (a paper printed A/B/C/D becomes (1)(2)(3)(4) in the same order; export
    re-renders A./B. later). Never reorder or drop an option. Values carry no label prefix and no empty
    brackets "( )". If an option's value is only a figure, keep its ![](...) marker as the value.
@@ -99,18 +106,18 @@ PARTS. Destructure sub-parts fully. Shared context goes in "stem"; EACH labelled
    under a parent, give its FULL path in "no" (e.g. "(a)(i)","(a)(ii)","(b)") — the pipeline turns
    these into a nested tree with local labels automatically. If the source clearly has sub-parts that
    were merged, split them.
-7. answer: {"value": ..., "kind": ...}. If you fix the value, set kind to "llm". For an MCQ the value
+8. answer: {"value": ..., "kind": ...}. If you fix the value, set kind to "llm". For an MCQ the value
    is the chosen option label, e.g. {"value": "(3)", "kind": "llm"} (multi-answer: "(2) (3)").
    For a multi-part question capture EVERY part's
    answer, labelled: {"value": "(a) $5$; (b) $12$", "kind": "llm"}.
-8. PRUNE the solution to THIS question only. The extractor is high-recall and may have merged another
+9. PRUNE the solution to THIS question only. The extractor is high-recall and may have merged another
    question's solution into this one (numbering restarts across sections, so two 'Q7' solutions can be
    concatenated). Compare the solution against THIS question's stem/parts; DELETE any working that
    solves a different problem. Keep only what belongs here.
-9. FILL a missing answer FROM the solution: if solution is present but answer is null/empty, read the
+10. FILL a missing answer FROM the solution: if solution is present but answer is null/empty, read the
    solution's final result and set the answer. Do NOT do the reverse — if answer is present but
    solution is null, NEVER fabricate a solution; leave it null.
-10. severity: "ok" (nothing changed) | "fixed" (you repaired something) | "severe" (unresolvable even
+11. severity: "ok" (nothing changed) | "fixed" (you repaired something) | "severe" (unresolvable even
    with the image — required content simply not present anywhere). Severe entries go to human review —
    do NOT guess; say in "reason" what is needed.
 

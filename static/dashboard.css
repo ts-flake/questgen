@@ -273,3 +273,8 @@ body.dark ::-webkit-scrollbar-thumb:hover{background:#4d5560;background-clip:pad
 /* overwrite-warning footer: three equal actions, so neither language makes one dominate */
 .warnActions{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
 .warnActions button{flex:1 1 0;min-width:0;justify-content:center;white-space:nowrap}
+
+/* an inline note that must be noticed before the field it explains */
+.note{display:flex;align-items:flex-start;gap:6px;font-size:12px;color:var(--acc);
+      background:var(--sel);border:1px solid var(--acc);border-radius:8px;padding:6px 9px}
+.note .ic{width:15px;height:15px;flex:0 0 auto;margin-top:1px}
