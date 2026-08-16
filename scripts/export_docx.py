@@ -35,12 +35,34 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 ANS_RED = RGBColor(0xC0, 0x00, 0x00)      # teacher-copy inline answers/solutions
 
 
+# w:rPr children that must precede w:color (CT_RPr is an ordered sequence). Anything not
+# listed sorts after, so inserting before the first unlisted child keeps the order valid.
+_RPR_BEFORE_COLOR = tuple(qn("w:" + t) for t in (
+    "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike",
+    "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish", "webHidden"))
+
+
 def _set_red(cell):
-    """Colour every text run in a cell red (teacher copy). OMML math keeps its colour;
-    the answer wording ('Ans:', worked steps) is what turns red."""
+    """Colour every run in a cell red (teacher copy) — the wording AND the equations.
+
+    An OMML equation's runs are `m:r`, not `w:r`, so `paragraph.runs` never sees them and a
+    latex answer exported as a native equation stayed black next to its red text. Their colour
+    lives in a `w:rPr` inside the `m:r`, which sits after `m:rPr` and before the `m:t`."""
     for p in cell.paragraphs:
         for r in p.runs:
             r.font.color.rgb = ANS_RED
+    for mr in cell._tc.findall(".//" + qn("m:r")):
+        rpr = mr.find(qn("w:rPr"))
+        if rpr is None:
+            rpr = mr.makeelement(qn("w:rPr"), {})
+            mrpr = mr.find(qn("m:rPr"))
+            mrpr.addnext(rpr) if mrpr is not None else mr.insert(0, rpr)
+        color = rpr.find(qn("w:color"))
+        if color is None:
+            color = rpr.makeelement(qn("w:color"), {})
+            after = [c for c in rpr if c.tag not in _RPR_BEFORE_COLOR]
+            after[0].addprevious(color) if after else rpr.append(color)
+        color.set(qn("w:val"), str(ANS_RED))
 
 import context
 
