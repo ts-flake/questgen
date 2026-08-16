@@ -888,6 +888,7 @@ def _answer_pair(t, e: dict, i: int, mcq_label: str, dirs, ans: str = "", sol: s
     else:
         c.paragraphs[0].add_run(pre + "Solution: ").bold = True
         c.paragraphs[0].add_run(MISSING)
+    c.add_paragraph()                             # gap under the slot, so pairs read apart
     _close(c)
 
 
