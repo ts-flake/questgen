@@ -91,9 +91,11 @@ latex — as long as the content stays faithful to the source. You MUST NOT inve
 6. Answer-blank placeholder: a fill-in-the-blank for the student's answer. It appears as underscores
    ("Ans: ____", "$____", "____cm") OR dot-leaders (exam style: "v = ........ m", "……"). KEEP it (it
    drives the docx exam layout) but normalize the blank run to the token [ANSWER]. Exam answer lines
-   are usually "<symbol> = [ANSWER] <unit>" — preserve the symbol, "=", and unit in place. Never
+   are usually "<symbol> = [ANSWER] <unit>" — preserve the symbol, "=", and unit in place. The
+   unit beside a blank is still a unit, so it follows rule 4 (upright, in \\mathrm). Never
    delete an existing [ANSWER].
-   Right: "Ans: [ANSWER] kg"  ·  "$v =$ [ANSWER] m s^{-1}"  ·  "area = [ANSWER] cm^2"
+   Right: "Ans: [ANSWER] $\\mathrm{kg}$"  ·  "$v =$ [ANSWER] $\\mathrm{m\\,s^{-1}}$"
+   Right: "area = [ANSWER] $\\mathrm{cm^2}$"
 FIG. Figure/table references "Fig N.X" / "Figure N.X" / "Table N.X" in the text: keep them but write
    "figure [QN].X" / "table [QN].X" — replace the source's leading number N with the literal token
    [QN] (a placeholder for this question's number), keep X. Never delete [QN] once present.
