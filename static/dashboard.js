@@ -342,9 +342,10 @@ async function loadFiles(){
                       +'<h4>raw/ '+folderBtn('raw')+'</h4>'+FILES.raw.map(f=>li(f,1)).join('');
   refreshOps();
 }
-function openFolder(which){
+function openFolder(which,name){   // name: reveal that file inside the folder, else just open it
   if(!SRC){toast(T('请先选择来源','Pick a source first'));return;}
-  J('/api/open_folder?'+qs()+'&which='+which).catch(e=>toast(T('无法打开文件夹','Could not open folder')));
+  J('/api/open_folder?'+qs()+'&which='+which+(name?'&f='+encodeURIComponent(name):''))
+    .catch(e=>toast(T('无法打开文件夹','Could not open folder')));
 }
 function prefillUpload(){   // seed the upload target from the current source (still editable)
   if(!SRC)return;
@@ -509,6 +510,9 @@ function toggleRef(qid){
 }
 function clearRefs(){REFS=[];renderBank();renderGenRefs();}
 const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// a value going into a '…' JS string inside a "…" inline handler: JS-escape the string
+// delimiters, then HTML-escape — including the double quote, which ends the attribute
+const jsq=s=>esc(String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")).replace(/"/g,'&quot;');
 function partAnswers(parts,fs,lvl){   // per-part answer/solution, indented like the parts
   return (parts||[]).map(p=>{
     const bits=[];
@@ -812,9 +816,10 @@ async function exportDocx(){
        mcq_label:$('expMcq').value,blank:$('expBlank').value,marks_col:$('expMarks').checked,
        caption:capOpts(),sections:$('expSections').checked,show_total:$('expTotal').checked,
        log_usage:log})});
-    const links=(r.files||[r.file]).map(f=>`<a style="color:var(--acc)" href="/api/download?${qs()}&f=${encodeURIComponent(f)}">${esc(f)}</a>`).join(' · ');
-    const openBtn=` <button onclick="openFolder('outputs')" title="${T('在文件管理器中打开输出文件夹','Open the outputs folder')}" style="padding:2px 9px;vertical-align:middle">${IC('folderopen')}${T('打开文件夹','Open folder')}</button>`;
-    $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','Q')} → ${links}`+openBtn
+    // the filename reveals the file in the OS file manager — the export already sits in
+    // outputs/, so downloading a second copy into ~/Downloads was the wrong gesture
+    const links=(r.files||[r.file]).map(f=>`<a style="color:var(--acc);cursor:pointer;text-decoration:underline" onclick="openFolder('outputs','${jsq(f)}')" title="${T('在文件管理器中显示','Show in the file manager')}">${esc(f)}</a>`).join(' · ');
+    $('expMsg').innerHTML=`${T('已导出','Exported')} ${r.n} ${T('题','Q')} → ${links}`
       +(r.logged?' <span class="badge ok">'+IC('book')+' '+T('已记入使用记录','Logged')+'</span>':'');
     if(r.logged)await refreshUsage();
   }catch(e){$('expMsg').textContent='ERROR: '+e}

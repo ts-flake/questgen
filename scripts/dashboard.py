@@ -760,10 +760,14 @@ def ai_assist(body: dict) -> dict:
     return {"output": out}
 
 
-def open_in_file_manager(ctx: context.Ctx, which: str) -> dict:
+def open_in_file_manager(ctx: context.Ctx, which: str, name: str = "") -> dict:
     """Reveal a source folder (original/ or raw/) or the worksheet outputs/ folder in the OS
-    file manager. Restricted to the project's own folders — only opens a folder, never reads
-    or returns file contents."""
+    file manager, selecting `name` within it when given. Restricted to the project's own
+    folders — only opens or reveals, never reads or returns file contents.
+
+    `name` comes from the browser, so it must be a bare filename that resolves to a real file
+    directly inside the folder; anything else (a path, a symlink out, a missing file) is
+    rejected rather than handed to the file manager."""
     dirs = {"original": ctx.original_dir, "raw": ctx.raw_dir, "outputs": ctx.outputs_dir}
     if which not in dirs:
         raise ValueError("bad which")
@@ -777,14 +781,25 @@ def open_in_file_manager(ctx: context.Ctx, which: str) -> dict:
             target.mkdir(parents=True, exist_ok=True)   # created on first export; make it if empty
         else:
             raise ValueError(f"folder does not exist: {which}/")
-    p = str(target)
+    reveal = None
+    if name:
+        if name != Path(name).name:
+            raise ValueError("bad file name")
+        f = (target / name).resolve()
+        if f.parent != target or not f.is_file():
+            raise ValueError("file not in that folder")
+        reveal = f
     if sys.platform == "darwin":
-        subprocess.run(["open", p], check=False)
+        subprocess.run(["open", "-R", str(reveal)] if reveal else ["open", str(target)],
+                       check=False)
     elif sys.platform.startswith("win"):
-        os.startfile(p)                                  # type: ignore[attr-defined]  # noqa
+        if reveal:
+            subprocess.run(["explorer", f"/select,{reveal}"], check=False)
+        else:
+            os.startfile(str(target))                    # type: ignore[attr-defined]  # noqa
     else:
-        subprocess.run(["xdg-open", p], check=False)
-    return {"ok": True, "opened": which}
+        subprocess.run(["xdg-open", str(target)], check=False)   # no portable "reveal"
+    return {"ok": True, "opened": which, "revealed": reveal.name if reveal else ""}
 
 
 def _backups_dir(ctx: context.Ctx) -> Path:
@@ -1219,7 +1234,8 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/files":
                 self._json(list_files(ctx_from_query(q)))
             elif u.path == "/api/open_folder":
-                self._json(open_in_file_manager(ctx_from_query(q), q.get("which", ["original"])[0]))
+                self._json(open_in_file_manager(ctx_from_query(q), q.get("which", ["original"])[0],
+                                                q.get("f", [""])[0]))
             elif u.path == "/api/ops":
                 self._json(source_ops.load_ops(ctx_from_query(q).source_dir))
             elif u.path == "/api/map":
