@@ -792,19 +792,16 @@ def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, ru
         cell.add_paragraph()                          # blank line below the stem, before the sub-parts
 
     if teacher:                                       # marking copy: red answer row under its question
-        # An answer slot belongs to whatever actually asks something: the question itself when
-        # it has no sub-parts, otherwise each LEAF sub-part. A parent part is only an intro
-        # line, so it gets a slot solely when the key really put an answer on it.
-        amap = {lab: (ans, sol) for lab, ans, sol in answer_lines(e)}
-        if not parts or "" in amap:
-            _teacher_answer(t, e, i, mcq_label, dirs, *amap.get("", ("", "")))  # under the stem
+        slots = {lab: (ans, sol) for lab, ans, sol in answer_slots(e)}
+        if "" in slots:                               # a question that asks in its own right
+            _answer_pair(t, e, i, mcq_label, dirs, *slots[""])          # pair under the stem
         for node, lvl, path in parts:
             cell = _row(t, "", marks=node.get("marks") if marks_col else None)
             add_part(cell, node.get("no", ""), node.get("text", ""), lvl, dirs, sub, figctx)
             cell.add_paragraph()                      # trailing line so the mark sits one above bottom
-            if not node.get("children") or path in amap:
-                _teacher_answer(t, e, i, mcq_label, dirs, *amap.get(path, ("", "")),
-                                indent=Cm(0.75 * (lvl + 1)))
+            if path in slots:
+                _answer_pair(t, e, i, mcq_label, dirs, *slots[path],
+                             indent=Cm(0.75 * (lvl + 1)))
         if marks_col:
             _total_row(t, e)                          # inline-answer copy also gets the total
         return
@@ -821,20 +818,53 @@ def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, ru
         _total_row(t, e)                              # dedicated [Total: X] row
 
 
-MISSING = "null"                    # printed where an answer slot is empty, see _teacher_answer
+MISSING = "null"                    # printed where an answer slot is empty, see _answer_pair
 
 
-def _teacher_answer(t, e: dict, i: int, mcq_label: str, dirs,
-                    ans: str = "", sol: str = "", indent=None) -> None:
-    """Teacher copy: one answer slot, in red, directly under the row it answers — question
-    line, then answer line. The caller pairs them, so the sub-part label already sits on the
-    line above and is not repeated; `indent` lines the answer up under its own sub-part.
+def answer_slots(e: dict) -> list[tuple[str, str, str]]:
+    """[(label, answer, solution)] for every slot that ASKS something, in reading order.
 
-    ALWAYS two rows, `Ans:` then `Solution:`, and an empty one prints MISSING. Collapsing the
-    empty ones is what made the marking copy ragged — a question could show one row, two, or
-    two plus a gap — so a marker could not tell "no solution recorded" from "same row layout,
-    different content". A visible `null` says which questions still need filling in."""
+    An answer slot belongs to the question itself when it has no sub-parts, otherwise to each
+    LEAF sub-part — a parent part is only an intro line, so it owns a slot solely when the key
+    really put an answer on it. Slots with nothing recorded are still returned, with empty
+    strings, because both output paths print a fixed pair and show the gap (see _answer_pair).
+    `answer_lines` stays the definition of where an answer lives; this adds where one is due."""
+    amap = {lab: (a, s) for lab, a, s in answer_lines(e)}
+    parts = list(iter_part_nodes(e.get("parts", [])))
+    out = []
+    if not parts or "" in amap:
+        out.append(("", *amap.get("", ("", ""))))
+    for node, _lvl, path in parts:
+        if not node.get("children") or path in amap:
+            out.append((path, *amap.get(path, ("", ""))))
+    return out
+
+
+def _prefix_bold(cell, label: str) -> None:
+    """Put a bold label at the very start of a cell's first paragraph, ahead of whatever
+    add_content already wrote there (a text run, an equation or an image)."""
+    p = cell.paragraphs[0]
+    run = p.add_run(label)
+    run.bold = True
+    pPr = p._p.find(qn("w:pPr"))
+    pPr.addnext(run._r) if pPr is not None else p._p.insert(0, run._r)
+
+
+def _answer_pair(t, e: dict, i: int, mcq_label: str, dirs, ans: str = "", sol: str = "",
+                 indent=None, label: str = "", no: str = "") -> None:
+    """One answer slot as its fixed two red rows: bold 'Ans:' then bold 'Solution:', with
+    MISSING printed for an empty one.
+
+    Collapsing the empty ones is what made the marking copy ragged — a question could show one
+    row, two, or two plus a gap — so a marker could not tell "no solution recorded" from a
+    different row layout. A visible `null` says which slots still need filling in.
+
+    Both output paths share this, so they cannot drift: the inline marking copy passes
+    `indent` to line the pair up under its own sub-part and no `label`, because the question
+    text is on the row above; the answers table at the end passes `label` (the sub-part path)
+    and `no` (the question number, on the first row only), because neither is next to it."""
     sub = lambda s: subst_placeholders(s, i)
+    pre = f"{label} " if label else ""
 
     def _close(c):
         if indent is not None:
@@ -844,14 +874,20 @@ def _teacher_answer(t, e: dict, i: int, mcq_label: str, dirs,
 
     val = ans
     if val and "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-        val = f"${val}$"
-    c = _row(t, "")
-    write_rich_line(c.paragraphs[0],
-                    "Ans: " + (sub(answer_display(e, val, mcq_label)) if val else MISSING))
+        val = f"${val}$"                          # bare latex fragment from tail_extract
+    c = _row(t, no)
+    p = c.paragraphs[0]
+    p.add_run(pre + "Ans: ").bold = True
+    write_rich_line(p, sub(answer_display(e, val, mcq_label)) if val else MISSING)
     _close(c)
 
     c = _row(t, "")
-    add_content(c, "Solution: " + (sub(sol) if sol else MISSING), dirs, [])
+    if sol:
+        add_content(c, sub(sol), dirs, [])
+        _prefix_bold(c, pre + "Solution: ")
+    else:
+        c.paragraphs[0].add_run(pre + "Solution: ").bold = True
+        c.paragraphs[0].add_run(MISSING)
     _close(c)
 
 
@@ -936,25 +972,10 @@ def build_docx(ctx: context.Ctx, entries: list[dict], title: str,
         st = _grid(doc, (Cm(1.3), Emu(text_w - Cm(1.3))))
         for i, e in enumerate(entries, 1):
             dirs = entry_img_dirs(ctx, e)
-            rows = answer_lines(e)                       # entry-level and/or one per sub-part
-            if not rows:
-                _row(st, f"{i}.").paragraphs[0].add_run("—")
-                continue
-            first = True
-            for label, ans, sol in rows:
-                if ans:
-                    val = ans
-                    if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-                        val = f"${val}$"  # bare latex fragment from tail_extract
-                    val = answer_display(e, val, mcq_label)   # MCQ label in the export's style
-                    write_rich_line(_row(st, f"{i}." if first else "").paragraphs[0],
-                                    f"{label} Ans: ".lstrip() + subst_placeholders(val, i))
-                    first = False
-                if sol:
-                    add_content(_row(st, f"{i}." if first else ""),
-                                (f"{label} " if label and not ans else "") + subst_placeholders(sol, i),
-                                dirs, [])
-                    first = False
+            no = f"{i}."                                 # question number on its first row only
+            for label, ans, sol in answer_slots(e):      # same slots, same pair, as the marking copy
+                _answer_pair(st, e, i, mcq_label, dirs, ans, sol, label=label, no=no)
+                no = ""
 
     tmp = Path(tempfile.mkdtemp(prefix="questgen_docx_"))
     try:
