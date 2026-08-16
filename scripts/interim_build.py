@@ -211,7 +211,7 @@ def load_blocks(ctx: context.Ctx, stem: str) -> list[dict]:
 
 # Only SOURCE-AGNOSTIC, mechanical rules live here. Anything that needs flexible
 # interpretation (answer placeholders 'Ans:/ans:/answers:/____' and their units,
-# severed latex, layout damage) is llm_clean's job — see its SYS_PROMPT.
+# severed latex, layout damage) is llm_clean's job — see its SYS_T1.
 
 ROMAN = re.compile(r"i{1,3}|iv|v|vi{0,3}|ix|x", re.I)
 

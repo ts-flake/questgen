@@ -132,11 +132,13 @@ questgen/
 │   ├── source_ops.py   #   PDF crop/mask/merge (page prep)
 │   ├── mineru_extract.py
 │   ├── interim_build.py, llm_segment.py     # PDF layout → structured interim jsonl
+│   ├── table_split.py  #   splits layout tables that hold whole questions
 │   ├── llm_clean.py, llm_tag.py, llm_gen.py # LLM clean / tag / generate
 │   ├── build_db.py     #   interim jsonl → SQLite
 │   └── export_docx.py  #   question bank → .docx worksheets
 ├── static/             # dashboard UI (index.html + dashboard.css + dashboard.js)
 ├── config/             # config.yaml (keys live in gitignored *_key.txt)
+├── docs/               # INTERIM_SCHEMA.md — the question-bank contract
 ├── requirements.txt
 └── content/            # YOUR sources + outputs/ (git-ignored, created locally)
 ```

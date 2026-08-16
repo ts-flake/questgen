@@ -686,10 +686,6 @@ def clean_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None,
     return summary
 
 
-def has_clean(ctx: context.Ctx, name: str) -> bool:
-    return (ctx.interim_dir / f"{Path(name).stem}.clean.jsonl").is_file()
-
-
 def clean_files(ctx: context.Ctx, names: list[str], log=print, cancel=None,
                 flagged_only=False, limit=0, use_vlm=False, thinking=None, chem=False) -> dict:
     # Default: text LLM (fast). Figure safety comes from deterministic guards

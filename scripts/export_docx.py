@@ -4,14 +4,15 @@ Layout: a grid table spanning the text width, 3 columns when marks are shown
 (number | content | marks) and 2 otherwise. Each sub-part is ONE row whose cell holds the
 text and then the answer-writing lines, so nothing blank sits between sub-parts; the mark
 sits one line above the bottom of its row, and a final row merges the last two columns for
-"[Total: X]". A teacher copy drops the writing space and puts each answer in its own red
-row directly under the row it answers — question line, answer line.
+"[Total: X]". A teacher copy drops the writing space and puts a fixed red Ans/Solution pair
+directly under the row it answers.
 
 The writing space comes from `answer_area` (schema v2), so the blank keeps whatever the
 paper printed beside it ("[ANSWER] km", "$[ANSWER]", "equation: [ANSWER] / conditions:
 [ANSWER]"); a blank still sitting inline in the text is rendered by the text, so v1 rows
-export unchanged. Answers likewise live on the sub-parts once a question has any, which is
-why every answer path goes through `answer_lines`.
+export unchanged. Answers live on the sub-parts once a question has any, so both answer
+outputs — the marking copy and the table at the end — go through `answer_slots` and render
+through `_answer_pair`, and cannot drift apart.
 
 Math: entries keep MinerU's latex ($ / $$). Word cannot render that, so latex is converted
 to real OMML equations (latex2mathml -> mathml2omml); a unicode transliteration is only the
@@ -31,38 +32,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Pt, RGBColor
-
-ANS_RED = RGBColor(0xC0, 0x00, 0x00)      # teacher-copy inline answers/solutions
-
-
-# w:rPr children that must precede w:color (CT_RPr is an ordered sequence). Anything not
-# listed sorts after, so inserting before the first unlisted child keeps the order valid.
-_RPR_BEFORE_COLOR = tuple(qn("w:" + t) for t in (
-    "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike",
-    "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish", "webHidden"))
-
-
-def _set_red(cell):
-    """Colour every run in a cell red (teacher copy) — the wording AND the equations.
-
-    An OMML equation's runs are `m:r`, not `w:r`, so `paragraph.runs` never sees them and a
-    latex answer exported as a native equation stayed black next to its red text. Their colour
-    lives in a `w:rPr` inside the `m:r`, which sits after `m:rPr` and before the `m:t`."""
-    for p in cell.paragraphs:
-        for r in p.runs:
-            r.font.color.rgb = ANS_RED
-    for mr in cell._tc.findall(".//" + qn("m:r")):
-        rpr = mr.find(qn("w:rPr"))
-        if rpr is None:
-            rpr = mr.makeelement(qn("w:rPr"), {})
-            mrpr = mr.find(qn("m:rPr"))
-            mrpr.addnext(rpr) if mrpr is not None else mr.insert(0, rpr)
-        color = rpr.find(qn("w:color"))
-        if color is None:
-            color = rpr.makeelement(qn("w:color"), {})
-            after = [c for c in rpr if c.tag not in _RPR_BEFORE_COLOR]
-            after[0].addprevious(color) if after else rpr.append(color)
-        color.set(qn("w:val"), str(ANS_RED))
 
 import context
 
@@ -164,7 +133,6 @@ def omml_el(latex: str):
     return parse_xml(o.replace("<m:oMath>", f"<m:oMath {OMML_NS}>", 1))
 
 IMG_MARK = re.compile(r"!\[\]\(([^)]+)\)")
-TABLE_HTML = re.compile(r"<table>.*?</table>", re.S)
 
 
 def iter_part_nodes(parts, level=0, prefix=""):
@@ -256,16 +224,6 @@ def latex_to_text(s: str) -> str:
     s = re.sub(r"_\{([^}]*)\}", r"\1", s)
     s = s.replace("{", "").replace("}", "")
     return s
-
-
-def clean_text(s: str) -> str:
-    """Latex inside $..$/$$..$$ → unicode; keep the rest verbatim.
-    Escaped currency dollars (\\$) must not participate in math-span pairing."""
-    s = s.replace("\\$", "\x00")
-    s = re.sub(r"\$\$([^$]*)\$\$", lambda m: latex_to_text(m.group(1)).strip(), s)
-    s = re.sub(r"\$([^$]*)\$", lambda m: latex_to_text(m.group(1)).strip(), s)
-    s = s.replace("\x00", "$").replace("\\_", "_")
-    return re.sub(r"\n{3,}", "\n\n", s).strip()
 
 
 # $..$ / $$..$$ math, plus bare \begin{env}..\end{env} blocks (aligned, cases, …)
@@ -533,6 +491,39 @@ def add_content(cell, text: str, img_dirs: list[Path], imgs_meta: list, figctx=N
         else:
             write_rich_text(cell, seg, first)
             first = False
+
+
+ANS_RED = RGBColor(0xC0, 0x00, 0x00)      # every exported answer, inline copy and end table
+
+
+# w:rPr children that must precede w:color (CT_RPr is an ordered sequence). Anything not
+# listed sorts after, so inserting before the first unlisted child keeps the order valid.
+_RPR_BEFORE_COLOR = tuple(qn("w:" + t) for t in (
+    "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike",
+    "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish", "webHidden"))
+
+
+def _set_red(cell):
+    """Colour every run in a cell red (teacher copy) — the wording AND the equations.
+
+    An OMML equation's runs are `m:r`, not `w:r`, so `paragraph.runs` never sees them and a
+    latex answer exported as a native equation stayed black next to its red text. Their colour
+    lives in a `w:rPr` inside the `m:r`, which sits after `m:rPr` and before the `m:t`."""
+    for p in cell.paragraphs:
+        for r in p.runs:
+            r.font.color.rgb = ANS_RED
+    for mr in cell._tc.findall(".//" + qn("m:r")):
+        rpr = mr.find(qn("w:rPr"))
+        if rpr is None:
+            rpr = mr.makeelement(qn("w:rPr"), {})
+            mrpr = mr.find(qn("m:rPr"))
+            mrpr.addnext(rpr) if mrpr is not None else mr.insert(0, rpr)
+        color = rpr.find(qn("w:color"))
+        if color is None:
+            color = rpr.makeelement(qn("w:color"), {})
+            after = [c for c in rpr if c.tag not in _RPR_BEFORE_COLOR]
+            after[0].addprevious(color) if after else rpr.append(color)
+        color.set(qn("w:val"), str(ANS_RED))
 
 
 # ---------------------------------------------------------------- document

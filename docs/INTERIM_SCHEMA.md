@@ -157,7 +157,9 @@ exactly one place:
 
 So a consumer must read both levels; `export_docx.answer_lines` and `interim_build.has_answer`
 do this and are the ones to reuse. `no_answer` / `no_solution` are judged the same way, or every
-structured question would be flagged as unanswered.
+structured question would be flagged as unanswered. An exporter that must also show the *gaps*
+wants `export_docx.answer_slots`, which adds where an answer is **due** — the question itself when
+it has no sub-parts, otherwise each leaf sub-part.
 
 - The cut is an **exact partition**: only the markers and the separators between entries are
   dropped (verified over 346 splits in a real corpus).

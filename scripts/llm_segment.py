@@ -210,10 +210,6 @@ def parse_options(text: str) -> dict | None:
 
 # ---------------------------------------------------------------- assembly (verbatim)
 
-def _block_by_i(blocks: list[dict]) -> dict:
-    return {b["_i"]: b for b in blocks}
-
-
 # roman numerals need their own alternative: a bare [a-z] only ever consumed ONE letter, so
 # "(ii)"/"(iii)"/"(iv)" never matched and the marker stayed duplicated in the part text.
 _PART_LABEL = re.compile(r"^\s*\(?\s*(?:[ivx]{2,4}|[a-z])\s*[).]\s*", re.I)

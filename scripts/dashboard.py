@@ -1303,19 +1303,6 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Cache-Control", "max-age=86400")
                 self.end_headers()
                 self.wfile.write(data)
-            elif u.path == "/api/download":
-                ctx = ctx_from_query(q)
-                rel = q["f"][0].replace("\\", "/")
-                p = (ctx.outputs_dir / rel).resolve()
-                if ".." in rel or not str(p).startswith(str(ctx.outputs_dir.resolve())) or not p.is_file():
-                    return self._err("no such file", 404)
-                data = p.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", f'attachment; filename="{p.name}"')
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
             else:
                 self._err("not found", 404)
         except BrokenPipeError:

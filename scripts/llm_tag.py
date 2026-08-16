@@ -149,10 +149,6 @@ def tag_one(ctx: context.Ctx, stem: str, tax: dict, ep, log=print, cancel=None,
     return {"file": stem, **stats}
 
 
-def has_tagged(ctx: context.Ctx, name: str) -> bool:
-    return (ctx.interim_dir / f"{Path(name).stem}.tagged.jsonl").is_file()
-
-
 def tag_files(ctx: context.Ctx, names: list[str], log=print, cancel=None, thinking=None) -> dict:
     ep = llm_clean.endpoint(thinking)
     if ep is None and not os.environ.get("QUESTGEN_LLM_MOCK"):
