@@ -731,9 +731,9 @@ def _total_row(t, e: dict) -> None:
     with a blank line above and below it (too long for the 1.5cm marks col; merged it has
     room, right edge still lines up)."""
     qtotal = _question_total(e)
+    if qtotal is None:                                    # no marks to total: no row at all,
+        return                                            # an empty one just read as a stray gap
     _row(t)
-    if qtotal is None:
-        return
     cells = t.rows[-1].cells
     merged = cells[1].merge(cells[2])
     above = merged.paragraphs[0]                          # blank line above
@@ -792,14 +792,19 @@ def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, ru
         cell.add_paragraph()                          # blank line below the stem, before the sub-parts
 
     if teacher:                                       # marking copy: red answer row under its question
+        # An answer slot belongs to whatever actually asks something: the question itself when
+        # it has no sub-parts, otherwise each LEAF sub-part. A parent part is only an intro
+        # line, so it gets a slot solely when the key really put an answer on it.
         amap = {lab: (ans, sol) for lab, ans, sol in answer_lines(e)}
-        _teacher_answer(t, e, i, mcq_label, dirs, *amap.get("", ("", "")))   # under the stem row
+        if not parts or "" in amap:
+            _teacher_answer(t, e, i, mcq_label, dirs, *amap.get("", ("", "")))  # under the stem
         for node, lvl, path in parts:
             cell = _row(t, "", marks=node.get("marks") if marks_col else None)
             add_part(cell, node.get("no", ""), node.get("text", ""), lvl, dirs, sub, figctx)
             cell.add_paragraph()                      # trailing line so the mark sits one above bottom
-            _teacher_answer(t, e, i, mcq_label, dirs, *amap.get(path, ("", "")),
-                            indent=Cm(0.75 * (lvl + 1)))
+            if not node.get("children") or path in amap:
+                _teacher_answer(t, e, i, mcq_label, dirs, *amap.get(path, ("", "")),
+                                indent=Cm(0.75 * (lvl + 1)))
         if marks_col:
             _total_row(t, e)                          # inline-answer copy also gets the total
         return
@@ -816,45 +821,47 @@ def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, ru
         _total_row(t, e)                              # dedicated [Total: X] row
 
 
+MISSING = "null"                    # printed where an answer slot is empty, see _teacher_answer
+
+
 def _teacher_answer(t, e: dict, i: int, mcq_label: str, dirs,
                     ans: str = "", sol: str = "", indent=None) -> None:
-    """Teacher copy: ONE answer's row(s), in red, emitted directly under the row it answers —
-    question line, then answer line. The caller pairs them, so the sub-part label is already
-    printed on the line above and is not repeated here; `indent` lines the answer up under its
-    own sub-part. Answer and worked solution get a row each (a solution can carry figures)."""
+    """Teacher copy: one answer slot, in red, directly under the row it answers — question
+    line, then answer line. The caller pairs them, so the sub-part label already sits on the
+    line above and is not repeated; `indent` lines the answer up under its own sub-part.
+
+    ALWAYS two rows, `Ans:` then `Solution:`, and an empty one prints MISSING. Collapsing the
+    empty ones is what made the marking copy ragged — a question could show one row, two, or
+    two plus a gap — so a marker could not tell "no solution recorded" from "same row layout,
+    different content". A visible `null` says which questions still need filling in."""
     sub = lambda s: subst_placeholders(s, i)
 
-    def _para(cell):
-        p = cell.paragraphs[0]
+    def _close(c):
         if indent is not None:
-            p.paragraph_format.left_indent = indent
-        return p
-
-    if ans:
-        val = ans
-        if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-            val = f"${val}$"
-        val = answer_display(e, val, mcq_label)
-        c = _row(t, "")
-        write_rich_line(_para(c), "Ans: " + sub(val))
-        _set_red(c)
-    if sol:
-        c = _row(t, "")
-        if indent is not None:
-            _para(c)
-        add_content(c, sub(sol), dirs, [])
-        for p in c.paragraphs:
-            if indent is not None:
+            for p in c.paragraphs:
                 p.paragraph_format.left_indent = indent
         _set_red(c)
 
+    val = ans
+    if val and "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
+        val = f"${val}$"
+    c = _row(t, "")
+    write_rich_line(c.paragraphs[0],
+                    "Ans: " + (sub(answer_display(e, val, mcq_label)) if val else MISSING))
+    _close(c)
+
+    c = _row(t, "")
+    add_content(c, "Solution: " + (sub(sol) if sol else MISSING), dirs, [])
+    _close(c)
+
 
 BODY_FONT = "Times New Roman"
+PAGE = (Cm(21.0), Cm(29.7))                                                # A4 portrait
 MARGINS = {"top": Cm(1), "bottom": Cm(1), "right": Cm(1), "left": Cm(2)}   # left = marking room
 
 
 def _page_setup(doc) -> None:
-    """Print setup for every export: serif body throughout and the worksheet margins.
+    """Print setup for every export: A4, serif body throughout and the worksheet margins.
 
     The font goes on the styles, not on runs, so everything that inherits them — sub-parts,
     table cells, options, captions — picks it up; `w:rFonts` is set directly because setting
@@ -875,6 +882,7 @@ def _page_setup(doc) -> None:
             rf.set(qn(slot), BODY_FONT)
     doc.styles["Normal"].font.size = Pt(11)
     for sec in doc.sections:
+        sec.page_width, sec.page_height = PAGE
         for side, val in MARGINS.items():
             setattr(sec, f"{side}_margin", val)
 
