@@ -1,24 +1,13 @@
-"""M3: extracted/<stem>/content_list.json → interim/<stem>.jsonl  (THE product).
+"""M3: extracted/<stem>/content_list.json -> interim/<stem>.jsonl  (THE product).
 
-Deterministic pipeline: preprocess → zone split → segment questions → parse answers
-→ pair → validate.  Text is assembled VERBATIM from MinerU blocks (only whitespace
-normalization inside math); nothing is rewritten.  公式保持 $ / $$, 表格保持 HTML。
+Deterministic pipeline: preprocess -> zone split -> segment questions -> parse answers
+-> pair -> validate. Text is assembled VERBATIM from MinerU blocks (only whitespace
+normalization inside math); nothing is rewritten. 公式保持 $ / $$, 表格保持 HTML。
 Every defect becomes a flag on the entry — nothing is silently dropped.
 
-Lean entry shape (question-centric; section/layout are internal scaffolding used
-for answer pairing, then demoted into meta):
-{
-  "qid": "chp2_algebra-017",                 # file-sequential, collision-free
-  "kind": "mcq"|"question",
-  "stem": "...", "parts": [{"no":"(a)","text":"..."}],
-  "options": {"1":"...","2":"..."},          # mcq only, else null
-  "answer": {"value":..., "kind":"mcq_option"|"tail_extract"} | null,
-  "solution": "..." | null,
-  "imgs": [{"kind":"image"|"table","path","page","bbox"}],
-  "meta": {"source_id","subject","stage","level","file","pages":[...],
-           "section","qno","blocks":[first,last]},
-  "flags": [...]
-}
+The row contract (fields, label formats, placeholder vocabulary) lives in
+docs/INTERIM_SCHEMA.md. It is not restated here: two copies drift, and the copy in the
+code is the one nobody updates.
 
 CLI:  python3 scripts/interim_build.py --all [--source book_math_worksheet_18]
 """
@@ -116,6 +105,10 @@ def prefetch(paths, workers: int = 8) -> None:
             pass
     with ThreadPoolExecutor(max_workers=workers) as ex:
         list(ex.map(touch, paths))
+
+SCHEMA_VERSION = 2          # interim row contract; see docs/INTERIM_SCHEMA.md
+# per-part fields that are DATA, not derived from text: they must survive re-nesting
+PART_CARRY = ("marks", "answer", "solution", "answer_area")
 
 NOISE_TYPES = {"page_number", "footer", "page_footnote", "header"}
 BOILERPLATE = re.compile(r"^(©|\d{1,4}$|Educational Publishing|Page \d)", re.I)
@@ -218,7 +211,7 @@ def load_blocks(ctx: context.Ctx, stem: str) -> list[dict]:
 
 # Only SOURCE-AGNOSTIC, mechanical rules live here. Anything that needs flexible
 # interpretation (answer placeholders 'Ans:/ans:/answers:/____' and their units,
-# severed latex, layout damage) is llm_clean's job — see its SYS_PROMPT.
+# severed latex, layout damage) is llm_clean's job — see its SYS_T1.
 
 ROMAN = re.compile(r"i{1,3}|iv|v|vi{0,3}|ix|x", re.I)
 
@@ -446,7 +439,9 @@ def nest_parts(flat: list[dict]) -> list[dict]:
             lvl = len(stack) + 1
             anc = groups[lvl - 1] if lvl - 1 < len(groups) - 1 else ""
             place(lvl, {"no": anc, "text": "", "children": []})
-        place(d, {"no": local_label(no), "text": p.get("text", ""), "children": []})
+        place(d, {"no": local_label(no), "text": p.get("text", ""),
+                  **{k: p[k] for k in PART_CARRY if p.get(k) not in (None, "")},
+                  "children": []})
 
     def prune(n):
         for c in n["children"]:
@@ -479,25 +474,19 @@ INLINE_PART = re.compile(r"(?m)^[ \t]*(\([a-z]{1,4}\))[ \t]+(?=\S)")
 # text, the superscript in its own math span) instead of one math span. Fold them into
 # "$\mathrm{cm^{2}}$" (whole unit upright in math). The split — letters OUTSIDE the $ — is the
 # tell that this is a unit, not an algebraic power like "$x^{2}$" (which stays entirely in math).
-_SPLIT_UNIT = re.compile(r"(?<![A-Za-z\\])([A-Za-z]{1,4})\s*\$\s*\^\s*\{?\s*([0-9]{1,3}[+\-−]?|[+\-−]?[0-9]{1,3}|[+\-−])\s*\}?\s*\$")
-
-
-def fix_split_units(s: str) -> str:
-    return _SPLIT_UNIT.sub(lambda m: r"$\mathrm{" + m.group(1) + "^{" + m.group(2).replace("−", "-") + "}}$", s)
-
-
 def normalize_text(s: str) -> str:
     """THE single deterministic, source-agnostic text normalizer. Applied to every
     text field in BOTH segment (polish_row) and clean (_coerce) so nothing bypasses it:
     - \\cent → ¢ ; <img src> → ![]() marker
     - empty option brackets ( ) removed ; marks [3] stripped
     - answer blanks (underscores / 4+ dot-leaders / ……) → [ANSWER]  (kept for docx layout)
+    Unit shapes ("cm $^{2}$" -> "$\\mathrm{cm^2}$") are NOT handled here — that judgement
+    (unit vs algebraic variable) belongs to the clean step, which owns latex hygiene.
     - figure/table N.X → figure/table [QN].X  ([QN] = question-number token)
     Idempotent (running twice changes nothing)."""
     s = s or ""
     s = re.sub(r"\\cents?\b", "¢", s)
     s = re.sub(r'<img[^>]*\bsrc=["\']([^"\']+)["\'][^>]*/?>', r'![](\1)', s)
-    s = fix_split_units(s)                           # "cm$^{2}$" -> "$\mathrm{cm^{2}}$"
     s = TOTAL_MARK.sub("", s)                        # [Total: N] captured at row level, removed everywhere
     s = re.sub(r"[（(]\s*[)）]", "", s)             # empty mcq answer bracket
     # per-part marks [N] are NOT stripped here — captured into a field by extract_marks_tree
@@ -546,7 +535,8 @@ def split_inline_parts(flat: list[dict]) -> list[dict]:
             continue
         intro = text[:ms[0].start()].strip()
         if intro:
-            out.append({"no": no, "text": intro})
+            out.append({"no": no, "text": intro,
+                        **{k: p[k] for k in PART_CARRY if p.get(k) not in (None, "")}})
         for i, m in enumerate(ms):
             end = ms[i + 1].start() if i + 1 < len(ms) else len(text)
             seg = text[m.end():end].strip()
@@ -557,12 +547,171 @@ def split_inline_parts(flat: list[dict]) -> list[dict]:
 
 def finalize_parts(flat: list[dict]) -> list[dict]:
     """flat (LLM/segment order) → normalized, inline-split, nested tree with per-part marks."""
-    norm = [{"no": canon_part_no(p.get("no", "")), "text": normalize_text(p.get("text", ""))}
+    norm = [{"no": canon_part_no(p.get("no", "")), "text": normalize_text(p.get("text", "")),
+             **{k: p[k] for k in PART_CARRY if p.get(k) not in (None, "")}}
             for p in flat]
     norm = [p for p in norm if p["text"]]
     tree = nest_parts(split_inline_parts(norm))
     extract_marks_tree(tree)
     return tree
+
+
+def split_answer_area(text: str) -> tuple[str, str | None]:
+    """Lift the TRAILING answer-writing area out of a question/part text into a template.
+
+    The area is the run of lines at the end that carry an [ANSWER] blank, so it keeps whatever
+    the paper prints alongside the blank — a unit after it ("[ANSWER] cm^2"), a currency symbol
+    before it ("$[ANSWER]"), or several labelled blanks ("equation: [ANSWER] / conditions:
+    [ANSWER]"). Returns (text_without_area, area) with area None when there is nothing to lift.
+
+    Only the trailing region moves. A blank in the middle of a sentence, or one followed by more
+    content (a figure), stays put: it is part of the sentence, not a place to write the answer.
+    Idempotent — a second pass finds no trailing blank."""
+    if "[ANSWER]" not in (text or ""):
+        return text, None
+
+    def is_area_line(ln: str) -> bool:
+        """A line that exists to be written on: a blank plus at most a short label or unit.
+        Prose that merely contains blanks ('The value is [ANSWER] cm and …') is not one."""
+        if "[ANSWER]" not in ln:
+            return False
+        residue = ln.replace("[ANSWER]", " ").strip()
+        return len(residue.split()) <= 3
+
+    lines = text.split("\n")
+    i = len(lines)
+    while i > 0:
+        ln = lines[i - 1].strip()
+        if is_area_line(ln):
+            i -= 1
+        elif not ln and i < len(lines):              # blank line INSIDE the area
+            i -= 1
+        else:
+            break
+    if i >= len(lines):                              # last line is not an answer line
+        return text, None
+    area = "\n".join(lines[i:]).strip()
+    body = "\n".join(lines[:i]).rstrip()
+    return body, (area or None)
+
+
+_ANS_MARK = re.compile(r"(?:\(\s*[A-Za-z]{1,3}\s*\)|\(\s*\d{1,2}\s*\)){1,3}")
+
+
+def has_answer(entry: dict, field: str = "answer") -> bool:
+    """True when the entry carries `field` at entry level or on any part (answers move onto
+    the parts as soon as a question has sub-parts)."""
+    if (entry.get(field) if field == "solution" else (entry.get("answer") or {}).get("value")):
+        return True
+
+    def walk(ps):
+        return any(p.get(field) or walk(p.get("children") or []) for p in ps or [])
+
+    return walk(entry.get("parts"))
+
+
+def part_paths(parts: list, pre: str = ""):
+    """Canonical full paths of every part, in order: '(a)', '(b)', '(b)(i)', …"""
+    for p in parts or []:
+        key = pre + (p.get("no") or "")
+        yield key
+        yield from part_paths(p.get("children") or [], key)
+
+
+def split_by_parts(text: str, labels: list) -> tuple[dict, str]:
+    """Packed answer/solution -> ({part_path: text}, leading_text).
+
+    An answer key writes one line per question — "(a) $6:11$; (b) Tank X: 31.2 l" — so the
+    per-part structure is present in the string but unusable by anything downstream. This
+    cuts it at the printed part markers, mapping a bare "(i)" onto the "(b)" it follows.
+    Returns ({}, text) when the blob is not a labelled list, which leaves it untouched.
+
+    The result is an exact partition of `text`: only the markers themselves and the
+    separators between entries are dropped."""
+    if not text or not labels:
+        return {}, text
+    known, tops = set(labels), {l for l in labels if l.count("(") == 1}
+    hits, parent = [], ""
+    for m in _ANS_MARK.finditer(text):
+        toks = ["(" + t.strip().lower() + ")"
+                for t in re.findall(r"\(\s*([A-Za-z]{1,3}|\d{1,2})\s*\)", m.group(0))]
+        path = "".join(toks)
+        if path in known:
+            if len(toks) == 1 and path in tops:
+                parent = path
+            hits.append((m.start(), m.end(), path))
+        elif len(toks) == 1 and parent and (parent + path) in known:
+            hits.append((m.start(), m.end(), parent + path))
+    # one marker suffices when the text STARTS with it ("(b) 5"); otherwise require two, so
+    # prose that merely mentions "(a)" is not mistaken for a labelled list.
+    if not hits or (len(hits) < 2 and hits[0][0] != 0):
+        return {}, text
+    out = {}
+    for k, (_s, e, path) in enumerate(hits):
+        end = hits[k + 1][0] if k + 1 < len(hits) else len(text)
+        val = text[e:end].strip().strip(";").strip()
+        if val:
+            out[path] = val
+    return out, text[:hits[0][0]].strip(" ;,\n")
+
+
+def apply_part_answers(row: dict) -> None:
+    """Move a packed answer/solution onto the parts it names.
+
+    An answer belongs to whatever it actually answers: a question with sub-parts keeps its
+    answers on the parts and holds NOTHING at entry level, so there is exactly one place to
+    read or edit each one. A question with no sub-parts keeps its answer where it is.
+
+    The exception is an answer that names no part at all ("$1.60" on a 3-part question): it
+    answers the question as a whole and cannot be attributed to any part, so it stays at
+    entry level rather than being dropped."""
+    labels = list(part_paths(row.get("parts") or []))
+    if len(labels) < 2:
+        return
+    by_path = {}
+
+    def index(parts, pre=""):
+        for p in parts or []:
+            key = pre + (p.get("no") or "")
+            by_path[key] = p
+            index(p.get("children") or [], key)
+
+    index(row.get("parts") or [])
+
+    for field in ("answer", "solution"):
+        cur = ((row.get("answer") or {}).get("value") if field == "answer"
+               else row.get("solution")) or ""
+        have = {p: by_path[p][field] for p in labels
+                if p in by_path and by_path[p].get(field)}
+        if have:
+            lead = ""                                   # parts win; entry is derived
+        else:
+            have, lead = split_by_parts(cur, labels)
+            for path, val in have.items():
+                if path in by_path:
+                    by_path[path][field] = val
+        if not have:
+            continue                                    # names no part -> leave it on the entry
+        if field == "answer":
+            row["answer"] = ({"value": lead, "kind": (row.get("answer") or {}).get("kind", "human")}
+                             if lead else None)
+        else:
+            row["solution"] = lead or None
+
+
+def apply_answer_area(row: dict) -> None:
+    """Move every trailing answer area (stem + each part, recursively) into `answer_area`."""
+    row["stem"], area = split_answer_area(row.get("stem") or "")
+    row["answer_area"] = area
+
+    def walk(parts):
+        for p in parts:
+            p["text"], a = split_answer_area(p.get("text") or "")
+            if a:
+                p["answer_area"] = a
+            walk(p.get("children") or [])
+
+    walk(row.get("parts") or [])
 
 
 def polish_row(row: dict) -> None:
@@ -586,6 +735,9 @@ def polish_row(row: dict) -> None:
     if row.get("options"):
         row["options"] = {k: normalize_text(v).strip() for k, v in row["options"].items()}
     canon_entry(row)                                 # "(1)" option keys, "(a)" part labels
+    apply_answer_area(row)                           # trailing blanks -> answer_area field
+    apply_part_answers(row)                          # packed "(a) …; (b) …" -> per-part answers
+    row["meta"]["schema"] = SCHEMA_VERSION
 
 
 def validate(entry: dict, img_dir: Path) -> None:
@@ -602,7 +754,14 @@ def validate(entry: dict, img_dir: Path) -> None:
             f.append("image_missing")
     if entry.get("meta", {}).get("unknown_block_types"):
         f.append("unknown_block_type")
-    if entry["solution"] is None:
+    # answers live on the parts once a question has sub-parts, so "answered" must be judged
+    # there too — otherwise every structured question is flagged as missing an answer.
+    def _any_part(field):
+        def walk(ps):
+            return any(p.get(field) or walk(p.get("children") or []) for p in ps or [])
+        return walk(entry.get("parts"))
+
+    if entry["solution"] is None and not _any_part("solution"):
         f.append("no_solution")
-    if entry["answer"] is None:
+    if entry["answer"] is None and not _any_part("answer"):
         f.append("no_answer")

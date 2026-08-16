@@ -21,38 +21,38 @@
       <button onclick="goto(cur-1)" data-ic="chevL" aria-label="prev page"></button>
       <input id="pageIn" style="width:52px" onchange="goto(+this.value)"> <span id="pcount" class="hint"></span>
       <button onclick="goto(cur+1)" data-ic="chevR" aria-label="next page"></button>
-      <button id="mCrop" onclick="setMode('crop')" data-ic="scissors"><span>crop</span></button>
-      <button id="mMask" onclick="setMode('mask')" data-ic="square"><span>mask</span></button>
-      <button onclick="clearPage()" data-en="clear edits on this page">清除本页编辑</button>
-      <span class="hint" data-en="thumbnails: click=jump, shift+click=set range end">缩略图: 点=跳转, shift+点=设为范围终点</span>
+      <button id="mCrop" onclick="setMode('crop')" data-ic="scissors"><span>Crop</span></button>
+      <button id="mMask" onclick="setMode('mask')" data-ic="square"><span>Mask</span></button>
+      <button onclick="clearPage()" data-en="Clear edits on this page">清除本页编辑</button>
+      <span class="hint" data-en="Thumbnails: click=jump, shift+click=set range end">缩略图: 点=跳转, shift+点=设为范围终点</span>
     </div>
     <div id="stage"><canvas id="pg"></canvas><div id="ov"></div></div>
   </div>
   <div id="side">
     <h4 data-ic="upload"><span data-en="Upload PDF / image → content path">上传 PDF / 图片 → content 路径</span></h4>
     <div class="hint" data-en="Target folders are created if missing.">目标 subject/stage/level/source 不存在会自动创建。</div>
-    <div class="row"><input id="upSubj" class="wide" placeholder="subject"><input id="upStage" class="wide" placeholder="stage"></div>
-    <div class="row"><input id="upLevel" class="wide" placeholder="level"><input id="upSource" class="wide" placeholder="source"></div>
-    <div class="row"><label class="hint" data-en="into">存入</label>
+    <div class="row"><input id="upSubj" class="wide" placeholder="Subject"><input id="upStage" class="wide" placeholder="Stage"></div>
+    <div class="row"><input id="upLevel" class="wide" placeholder="Level"><input id="upSource" class="wide" placeholder="Source"></div>
+    <div class="row"><label class="hint" data-en="Into">存入</label>
       <select id="upInto" class="wide"><option value="original">original/</option><option value="raw">raw/</option></select></div>
     <input type="file" id="upFile" accept="application/pdf,image/*" multiple style="width:100%;max-width:100%;font-size:12px">
     <button onclick="uploadSources()" id="upBtn" style="width:100%" data-ic="upload"><span data-en="Upload">上传</span></button>
     <div id="upMsg" class="hint"></div>
     <h4 style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px" data-en="Output (save → raw/)">Output (save → raw/)</h4>
-    <div class="row"><input id="range" class="wide" placeholder="页范围 e.g. 6-40,55 (空=全部)" data-en-ph="page range e.g. 6-40,55 (empty=all)"><button onclick="setRangeCur()" data-en="current page">当前页</button></div>
-    <button onclick="addStep()" data-en="+ add step (current file)">+ 添加 step (当前文件)</button>
+    <div class="row"><input id="range" class="wide" placeholder="页范围 e.g. 6-40,55 (空=全部)" data-en-ph="Page range e.g. 6-40,55 (empty=all)"><button onclick="setRangeCur()" data-en="Current page">当前页</button></div>
+    <button onclick="addStep()" data-en="+ Add step (current file)">+ 添加 step (当前文件)</button>
     <div id="steps"></div>
-    <div class="row"><input id="outName" class="wide" placeholder="输出名.pdf" data-en-ph="output name.pdf"><button onclick="save()" id="saveBtn" data-en="Save">保存</button></div>
+    <div class="row"><input id="outName" class="wide" placeholder="输出名.pdf" data-en-ph="Output name.pdf"><button onclick="save()" id="saveBtn" data-en="Save">保存</button></div>
     <div id="msg"></div>
-    <h4>ops.json <button style="font-size:11px" onclick="toggleOps()" data-en="show/hide">显示/隐藏</button></h4>
+    <h4>ops.json <button style="font-size:11px" onclick="toggleOps()" data-en="Show/hide">显示/隐藏</button></h4>
     <pre id="opsBox" style="display:none"></pre>
-    <div class="hint" data-en="merge = several steps (across files, incl. raw/). Every op is logged in ops.json; raw/ is reproducible.">merge = 多个 step (可来自不同文件, 含 raw/)。所有操作记录于 ops.json, raw/ 可复现。</div>
+    <div class="hint" data-en="Ops: merge = several steps (across files, incl. raw/). Every op is logged in ops.json; raw/ is reproducible.">Ops: merge = 多个 step (可来自不同文件, 含 raw/)。所有操作记录于 ops.json, raw/ 可复现。</div>
   </div>
 </div>
 <div id="viewPipe">
   <div id="pipeCtx" style="font-family:var(--serif);font-size:15px;padding:2px 0"></div>
   <div class="row">
-    <button onclick="runStep('all')" data-ic="play"><span data-en="one-click extract→…→tag→db (selected)">一键 extract→…→tag→db (选中)</span></button>
+    <button onclick="runStep('all')" data-ic="play"><span data-en="One-click extract→…→tag→db (selected)">一键 extract→…→tag→db (选中)</span></button>
     <button onclick="runStep('extract')">Extract</button>
     <button onclick="runStep('interim')">Interim</button>
     <button onclick="runStep('clean')">Clean</button>
@@ -62,34 +62,34 @@
     <span id="pipeStat" class="hint"></span>
   </div>
   <div class="row" style="gap:14px">
-    <label class="hint"><input type="checkbox" id="optForce"> <span data-en="force re-extract (ignore already-extracted)">强制重新 extract (忽略已解析)</span></label>
-    <label class="hint"><input type="checkbox" id="optVlm"> <span data-en="clean with VLM (reads figures)">clean 用 VLM 读图</span> <span style="color:var(--red)" data-en="(slow, ~1-2min/figure)">(慢, ~1-2min/图题)</span></label>
-    <label class="hint"><input type="checkbox" id="optThink"> <span data-en="enable thinking">开启 thinking</span> <span style="color:var(--red)" data-en="(slow)">(慢)</span></label>
-    <label class="hint"><input type="checkbox" id="optChem"> <span data-en="chemistry content — clean converts formulas to \ce{}">化学内容 — clean 时把化学式/方程识别为 \ce{}</span></label>
-    <label class="hint"><input type="checkbox" id="optBackup" checked> <span data-en="auto-backup before overwriting an existing bank">重跑已有题库前自动备份</span></label>
+    <label class="hint"><input type="checkbox" id="optForce"> <span data-en="Force re-extract (ignore already-extracted)">强制重新 extract (忽略已解析)</span></label>
+    <label class="hint"><input type="checkbox" id="optVlm"> <span data-en="Clean with VLM (reads figures)">clean 用 VLM 读图</span> <span style="color:var(--red)" data-en="(Slow, ~1-2min/figure)">(慢, ~1-2min/图题)</span></label>
+    <label class="hint"><input type="checkbox" id="optThink"> <span data-en="Enable thinking">开启 thinking</span> <span style="color:var(--red)" data-en="(Slow)">(慢)</span></label>
+    <label class="hint"><input type="checkbox" id="optChem"> <span data-en="Chemistry content — clean converts formulas to \ce{}">化学内容 — clean 时把化学式/方程识别为 \ce{}</span></label>
+    <label class="hint"><input type="checkbox" id="optBackup" checked> <span data-en="Auto-backup before overwriting an existing bank">重跑已有题库前自动备份</span></label>
   </div>
   <table><thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('.pchk').forEach(c=>c.checked=this.checked)"></th>
-    <th data-en="raw/ file">raw/ 文件</th><th data-en="size">大小</th><th>extract</th><th>interim</th><th>clean</th><th>tag</th><th data-en="live">当前</th></tr></thead>
+    <th data-en="File in raw/">raw/ 文件</th><th data-en="Size">大小</th><th>Extract</th><th>Interim</th><th>Clean</th><th>Tag</th><th data-en="Live">当前</th></tr></thead>
   <tbody id="pipeRows"></tbody></table>
   <pre id="jobLog"></pre>
-  <div class="hint" data-en="extract = MinerU cloud (VLM + OCR, keeps $$ formulas / HTML tables). interim = deterministic segment+validate → interim/*.jsonl (the product). ⚑ = items to review, see interim/*.report.json. 当前 = the stage the Bank serves.">extract = MinerU cloud (vlm + OCR, 公式 $$ / 表格 HTML 原样保留)。interim = 确定性分段+校验 → interim/*.jsonl (成品)。⚑ = 待审阅条目, 详见 interim/*.report.json。当前 = Bank 实际读取的阶段。</div>
+  <div class="hint" data-en="Stages: extract = MinerU cloud (VLM + OCR, keeps $$ formulas / HTML tables). interim = deterministic segment+validate → interim/*.jsonl (the product). ⚑ = items to review, see interim/*.report.json. The green badge marks the stage the Bank serves.">阶段: extract = MinerU cloud (vlm + OCR, 公式 $$ / 表格 HTML 原样保留)。interim = 确定性分段+校验 → interim/*.jsonl (成品)。⚑ = 待审阅条目, 详见 interim/*.report.json。当前 = Bank 实际读取的阶段。</div>
 </div>
 <div id="viewBank">
   <div id="bankFilters">
     <button class="on" style="width:100%" data-ic="plus" onclick="openNewEntry()"><span data-en="New question">新建题目</span></button>
     <h4 data-en="Filter">筛选</h4>
-    <input id="bkSearch" placeholder="搜索文本…" data-en-ph="search text…" oninput="searchChanged()">
-    <select id="bkTopic" onchange="renderBank()"><option value="" data-en="all topics">全部 topic</option></select>
-    <select id="bkType" onchange="renderBank()"><option value="" data-en="all types">全部题型</option></select>
-    <select id="bkDiff" onchange="renderBank()"><option value="" data-en="all difficulty">全部难度</option><option value="basic">basic</option><option value="medium">medium</option><option value="advance">advance</option></select>
-    <select id="bkFlag" onchange="renderBank()"><option value="" data-en="all entries">全部条目</option><option value="verified" data-en="verified only">仅 verified (已人工验证)</option><option value="unverified" data-en="unverified only">仅未 verified</option><option value="flagged" data-en="flagged only">仅 flagged</option><option value="clean" data-en="no flags">仅无 flag</option></select>
+    <input id="bkSearch" placeholder="搜索文本…" data-en-ph="Search text…" oninput="searchChanged()">
+    <select id="bkTopic" onchange="renderBank()"><option value="" data-en="All topics">全部 topic</option></select>
+    <select id="bkType" onchange="renderBank()"><option value="" data-en="All types">全部题型</option></select>
+    <select id="bkDiff" onchange="renderBank()"><option value="" data-en="All difficulty">全部难度</option><option value="basic">Basic</option><option value="medium">Medium</option><option value="advance">Advance</option></select>
+    <select id="bkFlag" onchange="renderBank()"><option value="" data-en="All entries">全部条目</option><option value="verified" data-en="Verified only">仅 verified (已人工验证)</option><option value="unverified" data-en="Unverified only">仅未 verified</option><option value="flagged" data-en="Flagged only">仅 flagged</option><option value="clean" data-en="No flags">仅无 flag</option></select>
     <select id="bkPick" onchange="renderBank()" title="选题车 / 使用记录状态">
-      <option value="" data-en="all (cart/usage)">全部 (选题/使用不限)</option>
-      <option value="in_cart" data-en="selected (in cart)">已选择 (在当前选题车)</option>
-      <option value="not_in_cart" data-en="not selected">未选择 (不在选题车)</option>
-      <option value="used" data-en="used (in teaching)">已用 (曾用于教学)</option>
-      <option value="unused" data-en="unused">未用过</option>
-      <option value="used_multi" data-en="used ≥2×">已用 ≥2 次</option></select>
+      <option value="" data-en="All (cart/usage)">全部 (选题/使用不限)</option>
+      <option value="in_cart" data-en="Selected (in cart)">已选择 (在当前选题车)</option>
+      <option value="not_in_cart" data-en="Not selected">未选择 (不在选题车)</option>
+      <option value="used" data-en="Used (in teaching)">已用 (曾用于教学)</option>
+      <option value="unused" data-en="Unused">未用过</option>
+      <option value="used_multi" data-en="Used ≥2×">已用 ≥2 次</option></select>
     <div id="bkFiles"></div>
     <div id="bkLegend"></div>
     <div id="bkWarn" class="hint"></div>
@@ -98,15 +98,9 @@
       <h4 style="margin:0 0 4px" data-ic="save"><span data-en="Backup / restore">备份 / 恢复</span></h4>
       <div class="hint" style="margin-bottom:4px" data-en="Snapshot this source's interim bank (before re-runs)">快照当前来源的 interim 题库 (重跑前先备份)</div>
       <button onclick="backupDb()" style="width:100%" data-en="Back up current bank">备份当前题库</button>
-      <select id="bkRestoreSel" style="width:100%;margin-top:5px"><option value="" data-en="— pick a backup —">— 选择备份 —</option></select>
+      <select id="bkRestoreSel" style="width:100%;margin-top:5px"><option value="" data-en="— Pick a backup —">— 选择备份 —</option></select>
       <button class="danger" onclick="restoreDb()" style="width:100%;margin-top:4px" data-ic="restore"><span data-en="Restore selected">恢复选中备份</span></button>
       <div id="bkupMsg" class="hint" style="margin-top:4px"></div>
-    </div>
-    <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px">
-      <h4 style="margin:0 0 4px" data-ic="format"><span data-en="Normalize labels">标号规范化</span></h4>
-      <div class="hint" style="margin-bottom:4px" data-en="Unify option keys to (1)(2)(3)(4) and part labels to (a)/(i) (auto-backs up first)">把旧条目的选项标号统一为 (1)(2)(3)(4)、子题标号统一为 (a)/(i) (自动先备份)</div>
-      <button onclick="normalizeBank()" style="width:100%" data-en="Normalize this source">规范化当前来源</button>
-      <div id="bkNormMsg" class="hint" style="margin-top:4px"></div>
     </div>
     <details style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
       <summary class="hint" onclick="setTimeout(loadJournal,0)" data-ic="clock"><span data-en="Edit history (restorable)">编辑历史 (可恢复)</span></summary>
@@ -123,48 +117,16 @@
     <div class="row"><input id="randN" type="number" min="1" value="10" style="width:58px"><button onclick="randPick()" data-ic="dice"><span data-en="Random pick">随机选题</span></button>
     <button class="danger" onclick="CART=[];renderCart();renderBank()" data-en="Clear">清空</button></div>
     <label class="hint"><input type="checkbox" id="optMcqFirst" checked onchange="if(this.checked)sortCartMcqFirst()"> <span data-en="MCQ first">MCQ 排在最前</span></label>
-    <label class="hint"><input type="checkbox" id="optFresh" checked> <span data-en="prefer unused">优先未用过的题</span></label>
-    <div class="hint"><span data-en="drawn at random from the current filter">从当前筛选结果中随机抽取</span> <button style="font-size:11px" onclick="sortCartMcqFirst()" data-en="MCQ first">MCQ 置前</button></div>
+    <label class="hint"><input type="checkbox" id="optFresh" checked> <span data-en="Prefer unused">优先未用过的题</span></label>
+    <div class="hint"><span data-en="Drawn at random from the current filter">从当前筛选结果中随机抽取</span> <button style="font-size:11px" onclick="sortCartMcqFirst()" data-en="MCQ first">MCQ 置前</button></div>
     <div id="cartList"></div>
     <input id="expTitle" placeholder="Worksheet 标题" data-en-ph="Worksheet title">
-    <label class="hint"><span data-en="MCQ option labels (export format; stored as (1)(2))">MCQ 选项标号 (导出格式; 内部统一存 (1)(2))</span><select id="expMcq" style="width:100%">
-      <option value="letter_paren" data-en="(A) (B) letter, paren">(A) (B) 括号字母</option>
-      <option value="letter_dot" data-en="A. B. letter, dot">A. B. 点字母</option>
-      <option value="letter_bare" data-en="A B letter, bare">A B 纯字母</option>
-      <option value="num_paren" data-en="(1) (2) number, paren">(1) (2) 括号数字</option>
-      <option value="num_dot" data-en="1. 2. number, dot">1. 2. 点数字</option>
-      <option value="num_bare" data-en="1 2 number, bare">1 2 纯数字</option></select></label>
-    <label class="hint"><span data-en="[ANSWER] style">[ANSWER] 样式</span><select id="expBlank" style="width:100%">
-      <option value="underscore" data-en="____ underline">____ 下划线</option>
-      <option value="dots" data-en=".... dotted">.... 点线</option></select></label>
-    <details><summary class="hint" data-en="Figure/table caption options">图/表标题 (caption) 选项</summary>
-      <label class="hint"><span data-en="Style">样式</span><select id="capStyle" style="width:100%">
-        <option value="italic" data-en="italic">斜体</option>
-        <option value="bold" data-en="bold">黑体</option>
-        <option value="plain" data-en="plain">普通</option>
-        <option value="none" data-en="no caption">不显示 caption</option></select></label>
-      <label class="hint"><span data-en="Figure label word">图的标签词</span><select id="capFigWord" style="width:100%">
-        <option value="Fig.">Fig.</option>
-        <option value="Figure">Figure</option>
-        <option value="Diagram">Diagram</option>
-        <option value="图">图</option></select></label>
-      <label class="hint"><span data-en="Numbering">编号方式</span><select id="capNumber" style="width:100%">
-        <option value="per_question" data-en="by question (7.2, matches [QN].X in stem)">按题编号 (7.2, 与题干 [QN].X 一致)</option>
-        <option value="continuous" data-en="continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
-        <option value="none" data-en="no numbering">不编号</option></select></label>
-      <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="caption tables too">表格也加 caption</span></label>
-    </details>
-    <label class="hint"><span data-en="Answers">答案格式</span><select id="expAnsFmt" style="width:100%">
-      <option value="none" data-en="no answers">不含答案</option>
-      <option value="end" selected data-en="answers table at end">末尾附答案表格</option>
-      <option value="teacher" data-en="teacher copy (inline, red)">另出教师版 (题+答内联, 红字)</option>
-      <option value="both" data-en="end table + teacher copy">末尾答案表 + 教师版</option></select></label>
-    <label class="hint"><input type="checkbox" id="expMarks"> <span data-en="marks column (3rd col shows marks)">分数栏 (第三栏显示分值)</span></label>
-    <label class="hint"><input type="checkbox" id="expSections" checked> <span data-en="group by type (Section A/B…, sorted by marks)">按题型分区 (Section A/B…, 区内按分值排序)</span></label>
-    <label class="hint"><input type="checkbox" id="expTotal" checked> <span data-en="compute & show total marks">计算并显示全卷总分</span></label>
-    <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="record as used (real teaching)">记录为已用 (实际教学)</span></label>
+    <div class="row" style="margin-top:4px">
+      <button style="flex:1" data-ic="format" onclick="$('expModal').classList.add('on')"><span data-en="Export options…">导出选项…</span></button>
+    </div>
+    <label class="hint" title="确认这份导出会用于实际教学时勾选; 会记录每题的使用次数" data-en-title="Tick if this export is for real teaching; records a use count per question"><input type="checkbox" id="expLog"> <span data-en="Record as used (real teaching)">记录为已用 (实际教学)</span></label>
     <button onclick="exportDocx()" data-en="Export .docx">导出 .docx</button>
-    <button onclick="markUsed()" style="font-size:11px" data-ic="book"><span data-en="mark used only (no export)">仅标记已用 (不导出)</span></button>
+    <button onclick="markUsed()" data-ic="book" title="只记录使用次数, 不生成文件" data-en-title="Record the use count only, no file"><span data-en="Mark used only">仅标记已用</span></button>
     <div id="expMsg" class="hint"></div>
   </div>
 </div>
@@ -178,29 +140,29 @@
       <label class="hint" style="margin-top:6px"><span data-en="Learning Objectives (guide generation; appear after picking a topic)">学习目标 Learning Objectives (指导生成; 选 topic 后出现)</span></label>
       <div id="gObjList" class="chklist" style="max-height:150px"></div>
       <div class="row" style="margin-top:6px">
-        <label class="hint"><span data-en="Difficulty">难度</span> <select id="gDiff"><option value="" data-en="any">任意</option><option value="basic">basic</option><option value="medium">medium</option><option value="advance">advance</option></select></label>
+        <label class="hint"><span data-en="Difficulty">难度</span> <select id="gDiff"><option value="" data-en="Any">任意</option><option value="basic">Basic</option><option value="medium">Medium</option><option value="advance">Advance</option></select></label>
         <label class="hint"><span data-en="Count n">题数 n</span> <input id="gN" type="number" min="1" max="20" value="3" style="width:52px"></label></div>
     </div>
 
     <div class="gsec"><div class="gsec-h" data-en="② Reference corpus (few-shot)">② 参考语料 (few-shot)</div>
       <label class="hint" data-en="No refs picked → sample k from the bank by topic (+type); picked refs override sampling.">未选参考题时, 从 bank 按 topic (+ 题型) 随机采 k 题; 选了则用所选题 (覆盖随机)。</label>
       <div class="row">
-        <label class="hint">few-shot k <input id="gK" type="number" min="0" max="20" value="5" style="width:52px"></label>
-        <label class="hint"><span data-en="Type">题型</span> <select id="gType"><option value="" data-en="any">任意</option></select></label>
+        <label class="hint">Few-shot k <input id="gK" type="number" min="0" max="20" value="5" style="width:52px"></label>
+        <label class="hint"><span data-en="Type">题型</span> <select id="gType"><option value="" data-en="Any">任意</option></select></label>
       </div>
       <div id="gRefs"></div>
     </div>
 
     <div class="gsec"><div class="gsec-h" data-en="③ Generation settings">③ 生成设置</div>
-      <label class="hint" data-en="Model">模型</label><select id="gModel" style="width:100%"><option value="gen">gen (deepseek-v4-pro)</option><option value="llm">llm</option><option value="vlm">vlm</option></select>
-      <label class="hint" style="margin-top:5px"><input type="checkbox" id="gSol" checked> <span data-en="generate solutions">生成解答</span></label>
+      <label class="hint" data-en="Model">模型</label><select id="gModel" style="width:100%"><option value="gen">Gen (deepseek-v4-pro)</option><option value="llm">LLM</option><option value="vlm">VLM</option></select>
+      <label class="hint" style="margin-top:5px"><input type="checkbox" id="gSol" checked> <span data-en="Generate solutions">生成解答</span></label>
       <label class="hint" style="margin-top:5px" data-en="Custom prompt (optional)">自定义 prompt (可空)</label>
-      <textarea id="gPrompt" rows="4" placeholder="例如: 侧重生活情境应用题; 数字保持整洁; 避免与示例雷同…" data-en-ph="e.g. favour real-life word problems; keep numbers tidy; avoid resembling the examples…"></textarea>
+      <textarea id="gPrompt" rows="4" placeholder="例如: 侧重生活情境应用题; 数字保持整洁; 避免与示例雷同…" data-en-ph="E.g. favour real-life word problems; keep numbers tidy; avoid resembling the examples…"></textarea>
     </div>
 
     <button onclick="genRun()" id="gRunBtn" data-ic="sparkles"><span data-en="Generate">生成</span></button>
     <div id="gMsg" class="hint"></div>
-    <div class="hint" style="margin-top:4px"><span data-en="Generated questions go to the review queue on the right; ">生成的题进入右侧待审; </span><b>accept</b><span data-en=" → ai_generated bank (switch source in Bank to see), "> → ai_generated 题库(Bank 切 source 查看), </span><b>reject</b><span data-en=" → discard."> → 丢弃。</span></div>
+    <div class="hint" style="margin-top:4px"><span data-en="Generated questions go to the review queue on the right; ">生成的题进入右侧待审; </span><b>Accept</b><span data-en=" → ai_generated bank (switch source in Bank to see), "> → ai_generated 题库(Bank 切 source 查看), </span><b>Reject</b><span data-en=" → discard."> → 丢弃。</span></div>
   </div>
   <div id="genList"></div>
 </div>
@@ -215,26 +177,26 @@
     <button class="danger" onclick="closeEdit()" data-en="Close">关闭</button></div>
   <div id="editTools">
     <span class="insBar">
-      <span data-en="format:">格式:</span>
+      <span data-en="Format:">格式:</span>
       <button onclick="fmtWrap('bold')" title="加粗 (Ctrl/⌘+B) — \textbf{…}" data-en-title="Bold (Ctrl/⌘+B) — \textbf{…}"><b>B</b></button>
       <button onclick="fmtWrap('italic')" title="斜体 (Ctrl/⌘+I) — \textit{…}" data-en-title="Italic (Ctrl/⌘+I) — \textit{…}"><i>I</i></button>
       <button onclick="fmtWrap('underline')" title="下划线 (Ctrl/⌘+U) — \underline{…}" data-en-title="Underline (Ctrl/⌘+U) — \underline{…}"><u>U</u></button>
       <span style="width:6px;display:inline-block"></span>
-      <span data-en="insert:">插入:</span>
+      <span data-en="Insert:">插入:</span>
       <button onclick="insTok('[ANSWER]')">[ANSWER]</button>
       <button onclick="insTok('[QN]')">[QN]</button>
-      <span class="nowrap" title="在光标处插入 HTML 表格 (行 × 列)" data-en-title="insert an HTML table at the cursor (rows × cols)" data-ic="table">
+      <span class="nowrap" title="在光标处插入 HTML 表格 (行 × 列)" data-en-title="Insert an HTML table at the cursor (rows × cols)" data-ic="table">
       <input id="tblR" type="number" min="1" max="20" value="2" style="width:52px">×<input id="tblC" type="number" min="1" max="12" value="2" style="width:52px">
-      <button onclick="insertTable()" data-en="table">表格</button></span>
+      <button onclick="insertTable()" data-en="Table">表格</button></span>
     </span>
     <span style="flex:1"></span>
-    <button id="aiAssistBtn" class="on" data-ic="sparkles" onclick="openAiAssist()" title="选中文本后用 AI 修改" data-en-title="select text, then edit it with AI"><span data-en="AI assist">AI 协助</span></button>
+    <button id="aiAssistBtn" class="on" data-ic="sparkles" onclick="openAiAssist()" title="选中文本后用 AI 修改" data-en-title="Select text, then edit it with AI"><span data-en="AI assist">AI 协助</span></button>
   </div>
   <div class="body">
     <div id="editLeft"></div>
     <div id="editRight">
       <div id="editRTabs" class="row">
-        <button id="livePrevToggle" class="on" onclick="toggleLivePrev()" title="切换实时预览 (上方)" data-en-title="toggle live preview (top)" data-ic="eye"><span data-en="live preview">实时预览</span></button>
+        <button id="livePrevToggle" class="on" onclick="toggleLivePrev()" title="切换实时预览 (上方)" data-en-title="Toggle live preview (top)" data-ic="eye"><span data-en="Live preview">实时预览</span></button>
         <button id="pdfTabQ" class="on" onclick="pdfTab('q')" data-ic="file"><span data-en="Question PDF">题目 PDF</span></button>
         <button id="pdfTabA" onclick="pdfTab('ans')" data-ic="file"><span data-en="Answer PDF">解答 PDF</span></button></div>
       <div id="editPreview"></div>
@@ -247,10 +209,10 @@
     <span style="flex:1"></span>
     <button class="danger" onclick="closeWarn()" data-en="Cancel">取消</button></div>
   <div id="warnBody"></div>
-  <div class="row" style="padding:10px 14px;border-top:1px solid var(--line);justify-content:flex-end">
-    <button onclick="closeWarn()" data-en="Cancel (review first — recommended)">取消 (推荐先检查)</button>
-    <button class="okbtn" onclick="warnGo(true)" data-ic="save"><span data-en="Back up, then run">备份后运行</span></button>
-    <button class="danger" onclick="warnGo(false)" data-en="Run without backup">不备份, 直接运行</button></div>
+  <div class="warnActions">
+    <button onclick="closeWarn()" title="建议先检查上表再决定" data-en-title="Review the table above first" data-en="Cancel">取消</button>
+    <button class="okbtn" onclick="warnGo(true)" data-ic="save"><span data-en="Back up &amp; run">备份后运行</span></button>
+    <button class="danger" onclick="warnGo(false)" data-en="Run anyway">直接运行</button></div>
 </div></div>
 <div id="setModal"><div id="setBox">
   <div class="top"><b style="font-family:var(--serif)" data-ic="gear"><span data-en="Models / API keys">模型 / API key 设置</span></b>
@@ -260,6 +222,46 @@
   <div id="setBody"></div>
   <div class="hint" style="padding:8px 14px" data-en="Keys go to config/&lt;section&gt;_key.txt (gitignored); the rest is written back to config.yaml and hot-reloaded.">key 写入 config/&lt;section&gt;_key.txt (已 gitignore); 其余写回 config.yaml 并热重载。</div>
 </div></div>
+<div id="expModal"><div id="expBox">
+  <div class="top"><b style="font-family:var(--serif)" data-ic="format"><span data-en="Export options">导出选项</span></b>
+    <span style="flex:1"></span>
+    <button class="on" onclick="$('expModal').classList.remove('on')" data-en="Done">完成</button></div>
+  <div id="expBody">
+    <label class="hint"><span data-en="MCQ option labels (export format; stored as (1)(2))">MCQ 选项标号 (导出格式; 内部统一存 (1)(2))</span><select id="expMcq" style="width:100%">
+      <option value="letter_paren" data-en="(A) (B) Letter, paren">(A) (B) 括号字母</option>
+      <option value="letter_dot" data-en="A. B. Letter, dot">A. B. 点字母</option>
+      <option value="letter_bare" selected data-en="A B Letter, bare">A B 纯字母</option>
+      <option value="num_paren" data-en="(1) (2) Number, paren">(1) (2) 括号数字</option>
+      <option value="num_dot" data-en="1. 2. Number, dot">1. 2. 点数字</option>
+      <option value="num_bare" data-en="1 2 Number, bare">1 2 纯数字</option></select></label>
+    <label class="hint"><span data-en="[ANSWER] style">[ANSWER] 样式</span><select id="expBlank" style="width:100%">
+      <option value="underscore" data-en="____ Underline">____ 下划线</option>
+      <option value="dots" selected data-en=".... Dotted">.... 点线</option></select></label>
+    <label class="hint"><span data-en="Figure/table caption style">图/表标题 (caption) 样式</span><select id="capStyle" style="width:100%">
+      <option value="italic" data-en="Italic">斜体</option>
+      <option value="bold" selected data-en="Bold">黑体</option>
+      <option value="plain" data-en="Plain">普通</option>
+      <option value="none" data-en="No caption">不显示 caption</option></select></label>
+    <label class="hint"><span data-en="Figure label word">图的标签词</span><select id="capFigWord" style="width:100%">
+      <option value="Fig.">Fig.</option>
+      <option value="Figure">Figure</option>
+      <option value="Diagram">Diagram</option>
+      <option value="图">图</option></select></label>
+    <label class="hint"><span data-en="Caption numbering">caption 编号方式</span><select id="capNumber" style="width:100%">
+      <option value="per_question" data-en="By question (7.2, matches [QN].X in stem)">按题编号 (7.2, 与题干 [QN].X 一致)</option>
+      <option value="continuous" data-en="Continuous (1, 2, 3…)">全文连续 (1, 2, 3…)</option>
+      <option value="none" data-en="No numbering">不编号</option></select></label>
+    <label class="hint"><input type="checkbox" id="capTables" checked> <span data-en="Caption tables too">表格也加 caption</span></label>
+    <label class="hint"><span data-en="Answers">答案格式</span><select id="expAnsFmt" style="width:100%">
+      <option value="none" data-en="No answers">不含答案</option>
+      <option value="end" selected data-en="Answers table at end">末尾附答案表格</option>
+      <option value="teacher" data-en="Teacher copy (inline, red)">另出教师版 (题+答内联, 红字)</option>
+      <option value="both" data-en="End table + teacher copy">末尾答案表 + 教师版</option></select></label>
+    <label class="hint"><input type="checkbox" id="expMarks"> <span data-en="Marks column (3rd col shows marks)">分数栏 (第三栏显示分值)</span></label>
+    <label class="hint"><input type="checkbox" id="expSections" checked> <span data-en="Group by type (Section A/B…, sorted by marks)">按题型分区 (Section A/B…, 区内按分值排序)</span></label>
+    <label class="hint"><input type="checkbox" id="expTotal" checked> <span data-en="Compute & show total marks">计算并显示全卷总分</span></label>
+  </div>
+</div></div>
 <div id="aiModal"><div id="aiBox">
   <div class="top"><b style="font-family:var(--serif)" data-ic="sparkles"><span data-en="AI assist">AI 协助</span></b>
     <span style="flex:1"></span><span id="aiMsg" class="hint"></span>
@@ -268,7 +270,7 @@
     <label class="hint" data-en="Selected text">选中文本</label>
     <textarea id="aiSel" rows="3" readonly></textarea>
     <label class="hint" data-en="Instruction (prompt)">指令 (prompt)</label>
-    <textarea id="aiPrompt" rows="2" placeholder="例如: 帮我改成 $\ce{}$ 语法" data-en-ph="e.g. rewrite this into $\ce{}$ syntax"></textarea>
+    <textarea id="aiPrompt" rows="2" placeholder="例如: 帮我改成 $\ce{}$ 语法" data-en-ph="E.g. rewrite this into $\ce{}$ syntax"></textarea>
     <div class="row" style="margin-top:6px"><button id="aiRunBtn" class="on" data-ic="sparkles" onclick="aiRun()"><span data-en="Run">运行</span></button></div>
     <div id="aiOutWrap" style="display:none">
       <label class="hint" data-en="AI output">AI 输出</label>

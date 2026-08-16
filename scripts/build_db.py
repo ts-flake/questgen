@@ -25,7 +25,10 @@ import context
 import interim_build as ib
 import llm_tag
 
-REQUIRED = ("qid", "kind", "stem", "meta")
+# `stem` is NOT here: it may legitimately be "" when a paper starts straight at (a)
+# (docs/INTERIM_SCHEMA.md §1). Such a question carries its content in `parts`, which
+# the emptiness check below covers.
+REQUIRED = ("qid", "kind", "meta")
 
 
 def taggable_source(ctx: context.Ctx, stem: str) -> Path | None:
@@ -76,6 +79,8 @@ def validate(entry: dict, tax: set) -> list[str]:
     for k in REQUIRED:
         if not entry.get(k):
             errs.append(f"missing:{k}")
+    if not (entry.get("stem") or entry.get("parts")):
+        errs.append("empty:stem+parts")
     for t in (entry.get("tags", {}).get("topic") or []):
         if t not in tax:
             errs.append(f"bad_topic:{t}")

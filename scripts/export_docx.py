@@ -1,15 +1,23 @@
-"""M5: export selected bank entries → worksheet .docx
+r"""M5: export selected bank entries -> worksheet .docx
 
-Format (per user spec): a 2-column table — col 1 = question number, col 2 = content.
-Stem and each sub-part get their own row; one blank row per question as answer
-space. Solutions go at the end of the document, same 2-column table form.
+Layout: a grid table spanning the text width, 3 columns when marks are shown
+(number | content | marks) and 2 otherwise. Each sub-part is ONE row whose cell holds the
+text and then the answer-writing lines, so nothing blank sits between sub-parts; the mark
+sits one line above the bottom of its row, and a final row merges the last two columns for
+"[Total: X]". A teacher copy drops the writing space and puts a fixed red Ans/Solution pair
+directly under the row it answers.
 
-Math: the lean entries keep MinerU latex ($/$$). Word can't render raw latex, so
-we downconvert simple P6-level latex to unicode text (×, ÷, ∠, °, fractions a/b).
-Images: ![](images/xx.jpg) markers are replaced by embedded pictures.
-HTML tables: converted to nested docx tables.
+The writing space comes from `answer_area` (schema v2), so the blank keeps whatever the
+paper printed beside it ("[ANSWER] km", "$[ANSWER]", "equation: [ANSWER] / conditions:
+[ANSWER]"); a blank still sitting inline in the text is rendered by the text, so v1 rows
+export unchanged. Answers live on the sub-parts once a question has any, so both answer
+outputs — the marking copy and the table at the end — go through `answer_slots` and render
+through `_answer_pair`, and cannot drift apart.
 
-Deps: pip install python-docx  (pillow optional, for image sizing)
+Math: entries keep MinerU's latex ($ / $$). Word cannot render that, so latex is converted
+to real OMML equations (latex2mathml -> mathml2omml); a unicode transliteration is only the
+fallback when conversion fails. Chemistry \ce{} is expanded before conversion. HTML tables
+become real docx tables, with rowspan/colspan honoured via cell merges.
 """
 from __future__ import annotations
 
@@ -23,17 +31,7 @@ from docx.enum.table import WD_ALIGN_VERTICAL, WD_ROW_HEIGHT_RULE, WD_TABLE_ALIG
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
-from docx.shared import Cm, Pt, RGBColor
-
-ANS_RED = RGBColor(0xC0, 0x00, 0x00)      # teacher-copy inline answers/solutions
-
-
-def _set_red(cell):
-    """Colour every text run in a cell red (teacher copy). OMML math keeps its colour;
-    the answer wording ('Ans:', worked steps) is what turns red."""
-    for p in cell.paragraphs:
-        for r in p.runs:
-            r.font.color.rgb = ANS_RED
+from docx.shared import Cm, Emu, Pt, RGBColor
 
 import context
 
@@ -135,21 +133,15 @@ def omml_el(latex: str):
     return parse_xml(o.replace("<m:oMath>", f"<m:oMath {OMML_NS}>", 1))
 
 IMG_MARK = re.compile(r"!\[\]\(([^)]+)\)")
-TABLE_HTML = re.compile(r"<table>.*?</table>", re.S)
 
 
-def iter_parts(parts, level=0):
-    """Nested parts tree -> (local_no, text, level) in reading order (for indented rows)."""
+def iter_part_nodes(parts, level=0, prefix=""):
+    """Nested parts tree -> (node, level, path) in reading order. `path` is the composite
+    label ('(b)(i)') — the same key `answer_lines` reports, so the two can be matched up."""
     for p in parts or []:
-        yield p.get("no", ""), p.get("text", ""), level
-        yield from iter_parts(p.get("children", []), level + 1)
-
-
-def iter_part_nodes(parts, level=0):
-    """Nested parts tree -> (node, level) in reading order."""
-    for p in parts or []:
-        yield p, level
-        yield from iter_part_nodes(p.get("children", []), level + 1)
+        path = prefix + (p.get("no") or "")
+        yield p, level, path
+        yield from iter_part_nodes(p.get("children", []), level + 1, path)
 
 
 _LETTERS = "ABCDEFGHIJ"
@@ -180,7 +172,7 @@ BLANK_FILL = "_" * 12          # set per export by build_docx (underscore vs dot
 # figure/table caption options, set per export by build_docx (see CAPTION_DEFAULTS)
 CAPTION: dict = {}
 CAPTION_DEFAULTS = {
-    "style": "italic",      # "italic" | "bold" | "plain" | "none" (none = no captions)
+    "style": "bold",        # "italic" | "bold" | "plain" | "none" (none = no captions)
     "fig_word": "Fig.",     # word used for figures ("Fig." / "Figure" / "Diagram" / "图")
     "table_word": "Table",  # word used for tables
     "tables": True,         # caption tables too, or figures only
@@ -234,16 +226,6 @@ def latex_to_text(s: str) -> str:
     return s
 
 
-def clean_text(s: str) -> str:
-    """Latex inside $..$/$$..$$ → unicode; keep the rest verbatim.
-    Escaped currency dollars (\\$) must not participate in math-span pairing."""
-    s = s.replace("\\$", "\x00")
-    s = re.sub(r"\$\$([^$]*)\$\$", lambda m: latex_to_text(m.group(1)).strip(), s)
-    s = re.sub(r"\$([^$]*)\$", lambda m: latex_to_text(m.group(1)).strip(), s)
-    s = s.replace("\x00", "$").replace("\\_", "_")
-    return re.sub(r"\n{3,}", "\n\n", s).strip()
-
-
 # $..$ / $$..$$ math, plus bare \begin{env}..\end{env} blocks (aligned, cases, …)
 # that segmenters sometimes emit without $ delimiters.
 MATH_SPAN = re.compile(
@@ -281,12 +263,19 @@ def _space_after_math(next_tok: str, stripped_next: bool) -> bool:
     return s[0] not in PUNCT_AFTER
 
 
+# An answer line the blank OPENS ("[ANSWER] km", "$[ANSWER]") is right-aligned so the rule
+# ends at the right margin. One the blank only ends ("equation: [ANSWER]", or a sentence with
+# a blank in it) stays left, or right-aligning would drag its label off to the margin too.
+ANSWER_LEAD = re.compile(r"^\s*\\?[$¢£€]?\s*\[ANSWER\]")
+
+
 def write_rich_line(para, line: str):
     """One line of text into a paragraph: $..$ spans (and bare latex environments)
     become native equations (OMML) when converters are available, else unicode
-    fallback. A line carrying an [ANSWER] blank is right-aligned (exam answer line)."""
+    fallback. A line the [ANSWER] blank opens is right-aligned (exam answer line)."""
     if "[ANSWER]" in line:
-        para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        if ANSWER_LEAD.match(line):
+            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         line = line.replace("[ANSWER]", BLANK_FILL)
     line = line.replace("\\$", "\x00")
     toks = [t for t in MATH_SPAN.split(line) if t]
@@ -504,6 +493,39 @@ def add_content(cell, text: str, img_dirs: list[Path], imgs_meta: list, figctx=N
             first = False
 
 
+ANS_RED = RGBColor(0xC0, 0x00, 0x00)      # every exported answer, inline copy and end table
+
+
+# w:rPr children that must precede w:color (CT_RPr is an ordered sequence). Anything not
+# listed sorts after, so inserting before the first unlisted child keeps the order valid.
+_RPR_BEFORE_COLOR = tuple(qn("w:" + t) for t in (
+    "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike",
+    "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish", "webHidden"))
+
+
+def _set_red(cell):
+    """Colour every run in a cell red (teacher copy) — the wording AND the equations.
+
+    An OMML equation's runs are `m:r`, not `w:r`, so `paragraph.runs` never sees them and a
+    latex answer exported as a native equation stayed black next to its red text. Their colour
+    lives in a `w:rPr` inside the `m:r`, which sits after `m:rPr` and before the `m:t`."""
+    for p in cell.paragraphs:
+        for r in p.runs:
+            r.font.color.rgb = ANS_RED
+    for mr in cell._tc.findall(".//" + qn("m:r")):
+        rpr = mr.find(qn("w:rPr"))
+        if rpr is None:
+            rpr = mr.makeelement(qn("w:rPr"), {})
+            mrpr = mr.find(qn("m:rPr"))
+            mrpr.addnext(rpr) if mrpr is not None else mr.insert(0, rpr)
+        color = rpr.find(qn("w:color"))
+        if color is None:
+            color = rpr.makeelement(qn("w:color"), {})
+            after = [c for c in rpr if c.tag not in _RPR_BEFORE_COLOR]
+            after[0].addprevious(color) if after else rpr.append(color)
+        color.set(qn("w:val"), str(ANS_RED))
+
+
 # ---------------------------------------------------------------- document
 
 def _grid(doc, widths):
@@ -679,15 +701,33 @@ def order_sections(entries: list[dict]) -> list[tuple[str, str, list[dict]]]:
 ANS_LINES = 2                                            # answer-writing lines below each question
 
 
-def _answer_lines(cell, text: str) -> None:
+def _answer_lines(cell, text: str, area: str | None = None, sub=None, indent=None) -> None:
     """Gold layout: the answer-writing space lives INLINE in the question/part cell (no separate
     answer row). Every question gets ANS_LINES writing lines; a rendered [ANSWER] placeholder is
     already one such (right-aligned underscore) line, so it counts toward the total and the
-    padding blanks match its right alignment. Otherwise the blanks are left at default."""
-    has_fill = "[ANSWER]" in (text or "")
-    for _ in range(max(0, ANS_LINES - (text or "").count("[ANSWER]"))):
+    padding blanks match its right alignment. Otherwise the blanks are left at default.
+
+    Schema v2 lifts the TRAILING blank out of the text into `answer_area`, keeping whatever the
+    paper prints beside it — a unit ("[ANSWER] km"), a symbol ("$[ANSWER]") or several labelled
+    blanks ("equation: [ANSWER]\\n\\nconditions: [ANSWER]"). That template is printed here, one
+    paragraph per line, so the exported blank still carries its unit. A blank left mid-sentence
+    in the text is not part of the area and is rendered by the text itself, as before."""
+    written, right = 0, False
+    for ln in ((area or "").split("\n") if (area or "").strip() else []):
         p = cell.add_paragraph()
-        if has_fill:
+        if indent is not None:
+            p.paragraph_format.left_indent = indent
+        if ln.strip():
+            write_rich_line(p, sub(ln) if sub else ln)   # aligns itself, see ANSWER_LEAD
+            right = right or p.alignment == WD_ALIGN_PARAGRAPH.RIGHT
+            written += 1
+    right = right or any(ANSWER_LEAD.match(ln) for ln in (text or "").split("\n"))
+    used = written + (text or "").count("[ANSWER]")
+    for _ in range(max(0, ANS_LINES - used)):
+        p = cell.add_paragraph()
+        if indent is not None:
+            p.paragraph_format.left_indent = indent
+        if right:                                        # padding matches the rule it extends
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
 
@@ -695,7 +735,7 @@ def _question_total(e: dict):
     m = entry_marks(e)
     if m is not None:
         return m
-    s = sum((n.get("marks") or 0) for n, _ in iter_part_nodes(e.get("parts", [])))
+    s = sum((n.get("marks") or 0) for n, _, _ in iter_part_nodes(e.get("parts", [])))
     return s or None
 
 
@@ -704,9 +744,9 @@ def _total_row(t, e: dict) -> None:
     with a blank line above and below it (too long for the 1.5cm marks col; merged it has
     room, right edge still lines up)."""
     qtotal = _question_total(e)
+    if qtotal is None:                                    # no marks to total: no row at all,
+        return                                            # an empty one just read as a stray gap
     _row(t)
-    if qtotal is None:
-        return
     cells = t.rows[-1].cells
     merged = cells[1].merge(cells[2])
     above = merged.paragraphs[0]                          # blank line above
@@ -716,6 +756,28 @@ def _total_row(t, e: dict) -> None:
     mid.add_run(f"[Total: {qtotal}]").bold = True
     below = merged.add_paragraph()                        # blank line below
     below.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+
+def answer_lines(e: dict) -> list[tuple[str, str, str]]:
+    """[(label, answer, solution)] for one entry, flattened in reading order.
+
+    Answers live on the parts once a question has sub-parts, so an exporter cannot read
+    `entry["answer"]` alone: it holds a value only for a question with no parts (or one whose
+    key named no part at all). Label is "" for the entry-level row."""
+    out = []
+    ans = (e.get("answer") or {}).get("value") or ""
+    if ans or e.get("solution"):
+        out.append(("", str(ans), str(e.get("solution") or "")))
+
+    def walk(parts, pre=""):
+        for p in parts or []:
+            label = pre + (p.get("no") or "")
+            if p.get("answer") or p.get("solution"):
+                out.append((label, str(p.get("answer") or ""), str(p.get("solution") or "")))
+            walk(p.get("children") or [], label)
+
+    walk(e.get("parts"))
+    return out
 
 
 def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, running: dict,
@@ -742,63 +804,155 @@ def _question_block(t, i: int, e: dict, ctx, mcq_label: str, marks_col: bool, ru
     if parts:
         cell.add_paragraph()                          # blank line below the stem, before the sub-parts
 
-    if teacher:                                       # marking copy: inline red answers, no space
-        for node, lvl in parts:
+    if teacher:                                       # marking copy: red answer row under its question
+        slots = {lab: (ans, sol) for lab, ans, sol in answer_slots(e)}
+        if "" in slots:                               # a question that asks in its own right
+            _answer_pair(t, e, i, mcq_label, dirs, *slots[""])          # pair under the stem
+        for node, lvl, path in parts:
             cell = _row(t, "", marks=node.get("marks") if marks_col else None)
             add_part(cell, node.get("no", ""), node.get("text", ""), lvl, dirs, sub, figctx)
             cell.add_paragraph()                      # trailing line so the mark sits one above bottom
-        _teacher_answer(t, e, i, mcq_label, dirs)
+            if path in slots:
+                _answer_pair(t, e, i, mcq_label, dirs, *slots[path],
+                             indent=Cm(0.75 * (lvl + 1)))
         if marks_col:
             _total_row(t, e)                          # inline-answer copy also gets the total
         return
 
     # student copy: each sub-part is one row with its answer space inline in the same cell.
     if not parts:
-        _answer_lines(cell, e.get("stem", ""))        # answer space after the stem
-    for node, lvl in parts:
+        _answer_lines(cell, e.get("stem", ""), e.get("answer_area"), sub)
+    for node, lvl, path in parts:
         cell = _row(t, "", marks=node.get("marks") if marks_col else None)
         add_part(cell, node.get("no", ""), node.get("text", ""), lvl, dirs, sub, figctx)
-        _answer_lines(cell, node.get("text", ""))
+        _answer_lines(cell, node.get("text", ""), node.get("answer_area"), sub,
+                      indent=Cm(0.75 * (lvl + 1)))
     if marks_col:
         _total_row(t, e)                              # dedicated [Total: X] row
 
 
-def _teacher_answer(t, e: dict, i: int, mcq_label: str, dirs) -> None:
-    """Teacher copy: the question's answer + solution written right under it, in red."""
+MISSING = "null"                    # printed where an answer slot is empty, see _answer_pair
+
+
+def answer_slots(e: dict) -> list[tuple[str, str, str]]:
+    """[(label, answer, solution)] for every slot that ASKS something, in reading order.
+
+    An answer slot belongs to the question itself when it has no sub-parts, otherwise to each
+    LEAF sub-part — a parent part is only an intro line, so it owns a slot solely when the key
+    really put an answer on it. Slots with nothing recorded are still returned, with empty
+    strings, because both output paths print a fixed pair and show the gap (see _answer_pair).
+    `answer_lines` stays the definition of where an answer lives; this adds where one is due."""
+    amap = {lab: (a, s) for lab, a, s in answer_lines(e)}
+    parts = list(iter_part_nodes(e.get("parts", [])))
+    out = []
+    if not parts or "" in amap:
+        out.append(("", *amap.get("", ("", ""))))
+    for node, _lvl, path in parts:
+        if not node.get("children") or path in amap:
+            out.append((path, *amap.get(path, ("", ""))))
+    return out
+
+
+def _prefix_bold(cell, label: str) -> None:
+    """Put a bold label at the very start of a cell's first paragraph, ahead of whatever
+    add_content already wrote there (a text run, an equation or an image)."""
+    p = cell.paragraphs[0]
+    run = p.add_run(label)
+    run.bold = True
+    pPr = p._p.find(qn("w:pPr"))
+    pPr.addnext(run._r) if pPr is not None else p._p.insert(0, run._r)
+
+
+def _answer_pair(t, e: dict, i: int, mcq_label: str, dirs, ans: str = "", sol: str = "",
+                 indent=None, label: str = "", no: str = "") -> None:
+    """One answer slot as its fixed two red rows: bold 'Ans:' then bold 'Solution:', with
+    MISSING printed for an empty one.
+
+    Collapsing the empty ones is what made the marking copy ragged — a question could show one
+    row, two, or two plus a gap — so a marker could not tell "no solution recorded" from a
+    different row layout. A visible `null` says which slots still need filling in.
+
+    Both output paths share this, so they cannot drift: the inline marking copy passes
+    `indent` to line the pair up under its own sub-part and no `label`, because the question
+    text is on the row above; the answers table at the end passes `label` (the sub-part path)
+    and `no` (the question number, on the first row only), because neither is next to it."""
     sub = lambda s: subst_placeholders(s, i)
-    ans = e.get("answer") or {}
-    val = None
-    if ans.get("value"):
-        val = str(ans["value"])
-        if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-            val = f"${val}$"
-    if val is not None:
-        val = answer_display(e, val, mcq_label)
-        c = _row(t, "")
-        write_rich_line(c.paragraphs[0], "Ans: " + sub(val))
+    pre = f"{label} " if label else ""
+
+    def _close(c):
+        if indent is not None:
+            for p in c.paragraphs:
+                p.paragraph_format.left_indent = indent
         _set_red(c)
-        if e.get("solution"):
-            c = _row(t, "")
-            add_content(c, sub(e["solution"]), dirs, [])
-            _set_red(c)
-    elif e.get("solution"):
-        c = _row(t, "")
-        add_content(c, sub(e["solution"]), dirs, [])
-        _set_red(c)
+
+    val = ans
+    if val and "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
+        val = f"${val}$"                          # bare latex fragment from tail_extract
+    c = _row(t, no)
+    p = c.paragraphs[0]
+    p.add_run(pre + "Ans: ").bold = True
+    write_rich_line(p, sub(answer_display(e, val, mcq_label)) if val else MISSING)
+    _close(c)
+
+    c = _row(t, "")
+    if sol:
+        add_content(c, sub(sol), dirs, [])
+        _prefix_bold(c, pre + "Solution: ")
+    else:
+        c.paragraphs[0].add_run(pre + "Solution: ").bold = True
+        c.paragraphs[0].add_run(MISSING)
+    c.add_paragraph()                             # gap under the slot, so pairs read apart
+    _close(c)
+
+
+BODY_FONT = "Times New Roman"
+PAGE = (Cm(21.0), Cm(29.7))                                                # A4 portrait
+MARGINS = {"top": Cm(1), "bottom": Cm(1), "right": Cm(1), "left": Cm(2)}   # left = marking room
+
+
+def _page_setup(doc) -> None:
+    """Print setup for every export: A4, serif body throughout and the worksheet margins.
+
+    The font goes on the styles, not on runs, so everything that inherits them — sub-parts,
+    table cells, options, captions — picks it up; `w:rFonts` is set directly because setting
+    only `font.name` leaves the east-asian and complex-script slots on the theme font, which
+    is what makes stray glyphs render in the wrong face."""
+    for name in ("Normal", "Heading 1", "Heading 2"):
+        try:
+            st = doc.styles[name]
+        except KeyError:
+            continue
+        st.font.name = BODY_FONT
+        rpr = st.element.get_or_add_rPr()
+        rf = rpr.find(qn("w:rFonts"))
+        if rf is None:
+            rf = rpr.makeelement(qn("w:rFonts"), {})
+            rpr.append(rf)
+        for slot in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+            rf.set(qn(slot), BODY_FONT)
+    doc.styles["Normal"].font.size = Pt(11)
+    for sec in doc.sections:
+        sec.page_width, sec.page_height = PAGE
+        for side, val in MARGINS.items():
+            setattr(sec, f"{side}_margin", val)
 
 
 def build_docx(ctx: context.Ctx, entries: list[dict], title: str,
                with_solutions: bool, out_path: Path,
-               mcq_label: str = "letter_paren", blank: str = "underscore",
+               mcq_label: str = "letter_bare", blank: str = "dots",
                marks_col: bool = False, caption: dict | None = None,
-               sections: bool = False, show_total: bool = False, teacher: bool = False) -> Path:
+               sections: bool = True, show_total: bool = True, teacher: bool = False) -> Path:
     global BLANK_FILL, CAPTION
     BLANK_FILL = "_" * 12 if blank == "underscore" else "." * 16
     CAPTION = {**CAPTION_DEFAULTS, **{k: v for k, v in (caption or {}).items() if v is not None}}
     running: dict = {}                              # continuous caption counters (whole doc)
-    widths = (Cm(1.2), Cm(13.5), Cm(1.5)) if marks_col else (Cm(1.3), Cm(15.2))
     doc = Document()
-    doc.styles["Normal"].font.size = Pt(11)
+    _page_setup(doc)
+    # the grid spans the full text width, so it follows the margins rather than a fixed guess
+    sec = doc.sections[0]
+    text_w = Emu(sec.page_width - sec.left_margin - sec.right_margin)
+    widths = ((Cm(1.2), Emu(text_w - Cm(1.2) - Cm(1.5)), Cm(1.5)) if marks_col
+              else (Cm(1.3), Emu(text_w - Cm(1.3))))
     doc.add_heading((title or "Worksheet") + (" — Answers (teacher copy)" if teacher else ""), level=1)
     grand = total_marks(entries)
     if show_total and grand:                         # whole-paper total, under the title
@@ -829,25 +983,13 @@ def build_docx(ctx: context.Ctx, entries: list[dict], title: str,
     if with_solutions and not teacher:               # end answers table (teacher copy inlines instead)
         doc.add_page_break()
         doc.add_heading("Answers & Solutions", level=1)
-        st = _grid(doc, (Cm(1.3), Cm(15.2)))
+        st = _grid(doc, (Cm(1.3), Emu(text_w - Cm(1.3))))
         for i, e in enumerate(entries, 1):
             dirs = entry_img_dirs(ctx, e)
-            ans = e.get("answer") or {}
-            val = None
-            if ans.get("value"):
-                val = str(ans["value"])
-                if "$" not in val and re.search(r"\\[a-zA-Z]|\^\{|_\{", val):
-                    val = f"${val}$"  # bare latex fragment from tail_extract
-            if val is not None:
-                # Ans gets its own table row; solution (if any) follows in a second row.
-                val = answer_display(e, val, mcq_label)      # MCQ label in the export's style
-                write_rich_line(_row(st, f"{i}.").paragraphs[0], "Ans: " + subst_placeholders(val, i))
-                if e.get("solution"):
-                    add_content(_row(st, ""), subst_placeholders(e["solution"], i), dirs, [])
-            elif e.get("solution"):
-                add_content(_row(st, f"{i}."), subst_placeholders(e["solution"], i), dirs, [])
-            else:
-                _row(st, f"{i}.").paragraphs[0].add_run("—")
+            no = f"{i}."                                 # question number on its first row only
+            for label, ans, sol in answer_slots(e):      # same slots, same pair, as the marking copy
+                _answer_pair(st, e, i, mcq_label, dirs, ans, sol, label=label, no=no)
+                no = ""
 
     tmp = Path(tempfile.mkdtemp(prefix="questgen_docx_"))
     try:

@@ -77,8 +77,18 @@ latex — as long as the content stays faithful to the source. You MUST NOT inve
    Wrong: "$12.50 = 1250¢"  (unbalanced $)   Right: "\\$12.50 = 1250¢"
    Never wrap plain English sentences in latex; never use \\text{...} for normal sentences;
    plain numbers and words need no wrapping. Keep HTML <table> as-is. Use ¢ (unicode), not \\cent.
-4. Escaped currency: dollar amounts in text stay as \\$ (e.g. \\$150); they are NOT math delimiters.
-5. Answer-blank placeholder: a fill-in-the-blank for the student's answer. It appears as underscores
+4. Units inside math are UPRIGHT: a unit symbol is not a variable, so wrap it in \\mathrm and keep
+   the thin space before it. Collapse the braces on a simple exponent.
+   Wrong: "$0.25 \\, dm^{3}$"   Right: "$0.25\\,\\mathrm{dm^3}$"
+   Wrong: "$9.8 m s^{-2}$"      Right: "$9.8\\,\\mathrm{m\\,s^{-2}}$"
+   Wrong: "$25 cm^{2}$"         Right: "$25\\,\\mathrm{cm^2}$"
+   The unit is often left OUTSIDE the math with only its exponent inside — pull it in:
+   Wrong: "area is 25 cm $^{2}$"  Right: "area is $25\\,\\mathrm{cm^2}$"
+   Wrong: "12 cm$^{3}$"           Right: "$12\\,\\mathrm{cm^3}$"
+   This is only for UNITS (m, cm, kg, s, N, J, mol, dm^3, °C ...). Algebraic variables stay italic:
+   "$x^{2}$", "$v = u + at$" are already correct — never wrap those in \\mathrm.
+5. Escaped currency: dollar amounts in text stay as \\$ (e.g. \\$150); they are NOT math delimiters.
+6. Answer-blank placeholder: a fill-in-the-blank for the student's answer. It appears as underscores
    ("Ans: ____", "$____", "____cm") OR dot-leaders (exam style: "v = ........ m", "……"). KEEP it (it
    drives the docx exam layout) but normalize the blank run to the token [ANSWER]. Exam answer lines
    are usually "<symbol> = [ANSWER] <unit>" — preserve the symbol, "=", and unit in place. Never
@@ -87,7 +97,7 @@ latex — as long as the content stays faithful to the source. You MUST NOT inve
 FIG. Figure/table references "Fig N.X" / "Figure N.X" / "Table N.X" in the text: keep them but write
    "figure [QN].X" / "table [QN].X" — replace the source's leading number N with the literal token
    [QN] (a placeholder for this question's number), keep X. Never delete [QN] once present.
-6. options: keys are the option labels IN THE PAPER'S ORDER, written "(1)","(2)","(3)","(4)" — the
+7. options: keys are the option labels IN THE PAPER'S ORDER, written "(1)","(2)","(3)","(4)" — the
    bank's internal convention (a paper printed A/B/C/D becomes (1)(2)(3)(4) in the same order; export
    re-renders A./B. later). Never reorder or drop an option. Values carry no label prefix and no empty
    brackets "( )". If an option's value is only a figure, keep its ![](...) marker as the value.
@@ -99,18 +109,18 @@ PARTS. Destructure sub-parts fully. Shared context goes in "stem"; EACH labelled
    under a parent, give its FULL path in "no" (e.g. "(a)(i)","(a)(ii)","(b)") — the pipeline turns
    these into a nested tree with local labels automatically. If the source clearly has sub-parts that
    were merged, split them.
-7. answer: {"value": ..., "kind": ...}. If you fix the value, set kind to "llm". For an MCQ the value
+8. answer: {"value": ..., "kind": ...}. If you fix the value, set kind to "llm". For an MCQ the value
    is the chosen option label, e.g. {"value": "(3)", "kind": "llm"} (multi-answer: "(2) (3)").
    For a multi-part question capture EVERY part's
    answer, labelled: {"value": "(a) $5$; (b) $12$", "kind": "llm"}.
-8. PRUNE the solution to THIS question only. The extractor is high-recall and may have merged another
+9. PRUNE the solution to THIS question only. The extractor is high-recall and may have merged another
    question's solution into this one (numbering restarts across sections, so two 'Q7' solutions can be
    concatenated). Compare the solution against THIS question's stem/parts; DELETE any working that
    solves a different problem. Keep only what belongs here.
-9. FILL a missing answer FROM the solution: if solution is present but answer is null/empty, read the
+10. FILL a missing answer FROM the solution: if solution is present but answer is null/empty, read the
    solution's final result and set the answer. Do NOT do the reverse — if answer is present but
    solution is null, NEVER fabricate a solution; leave it null.
-10. severity: "ok" (nothing changed) | "fixed" (you repaired something) | "severe" (unresolvable even
+11. severity: "ok" (nothing changed) | "fixed" (you repaired something) | "severe" (unresolvable even
    with the image — required content simply not present anywhere). Severe entries go to human review —
    do NOT guess; say in "reason" what is needed.
 
@@ -282,21 +292,40 @@ def chat_text(ep: dict, system: str, user: str, retries: int = 2) -> str | None:
     return None
 
 
+# A backslash that JSON does not recognise as an escape introducer. The payload is
+# LaTeX-heavy, and the model intermittently writes "$\ce{C16H34}$" where JSON needs
+# "$\\ce{...}$" — one unescaped backslash makes the WHOLE reply unparseable. Matching
+# valid escapes first means an already-correct "\\ce" is consumed as a unit and left
+# alone; only a lone backslash is doubled.
+_ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|["\\/bfnrt])|\\')
+
+
+def _repair_escapes(txt: str) -> str:
+    return _ESCAPE.sub(lambda m: m.group(0) if len(m.group(0)) > 1 else "\\\\", txt)
+
+
 def _parse_json(txt: str):
     """Extract a JSON value (object OR array) from a model reply, tolerant of
-    ```json fences and surrounding prose."""
+    ```json fences and surrounding prose.
+
+    The fallback decodes the OUTERMOST value only — from the first bracket, with
+    raw_decode so trailing prose is ignored. It never reaches inside a value it
+    could not parse: a clean reply is {"fields":…,"patch":{"parts":[…]}}, and the
+    old array-first regex turned any object that failed the strict parse into its
+    bare parts list, which the caller then read as a patch. A payload we cannot
+    decode is an honest None (the caller retries, then records an llm_error)."""
     txt = re.sub(r"```(?:json)?|```", "", txt).strip()
-    try:
-        return json.loads(txt)
-    except Exception:
-        pass
-    for pat in (r"\[.*\]", r"\{.*\}"):        # array first (labels are arrays)
-        m = re.search(pat, txt, re.S)
+    for s in (txt, _repair_escapes(txt)):
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+        m = re.search(r"[\[{]", s)
         if m:
             try:
-                return json.loads(m.group(0))
-            except Exception:
-                continue
+                return json.JSONDecoder().raw_decode(s, m.start())[0]
+            except ValueError:
+                pass
     return None
 
 
@@ -464,6 +493,42 @@ def _markers(x) -> list[str]:
     return []
 
 
+def _restore_carry(old, new):
+    """Re-attach per-part marks/answers to a patched parts tree, matched by canonical path.
+
+    The prompt view (entry_view -> flatten_parts) shows the model only `no` and `text`, so a
+    parts patch can only ever carry those two — everything else on the part (marks, answer,
+    solution, answer_area) would be dropped on the floor when the patch replaces the tree.
+    A value the rebuild derived from the new text (marks read out of a corrected "[2]") wins,
+    hence setdefault."""
+    import interim_build as ib
+    if not isinstance(new, list):
+        return new
+    keep: dict[str, dict] = {}
+
+    def index(ps, pre=""):
+        for p in ps or []:
+            key = pre + (p.get("no") or "")
+            carry = {k: p[k] for k in ib.PART_CARRY if p.get(k) not in (None, "")}
+            if carry:
+                keep[key] = carry
+            index(p.get("children") or [], key)
+
+    index(old if isinstance(old, list) else [])
+    if not keep:
+        return new
+
+    def restore(ps, pre=""):
+        for p in ps:
+            key = pre + (p.get("no") or "")
+            for k, v in keep.get(key, {}).items():
+                p.setdefault(k, v)
+            restore(p.get("children") or [], key)
+
+    restore(new)
+    return new
+
+
 def _restore_markers(old, new):
     """The LLM can't see figures and drops ![](...) markers it thinks are spurious.
     Re-append any marker present in old but missing from new (append to end of a
@@ -497,6 +562,8 @@ def apply_patch(entry: dict, patch: dict) -> tuple[list[str], list[str], list[st
             continue
         if k in ("stem", "solution", "parts"):
             v = _restore_markers(entry.get(k), v)   # never drop a figure marker
+        if k == "parts":
+            v = _restore_carry(entry.get(k), v)     # never drop marks / per-part answers
         hard, soft = lint_field(k, v)
         if hard:
             rejected.append(f"{k}: {hard}")
@@ -581,7 +648,7 @@ def clean_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None,
                 + f"EXTRACTED ENTRY (its solution may include another question's working — prune it):\n"
                 f"{json.dumps(entry_view(r), ensure_ascii=False)}")
         v = chat(ep, sys_prompt, user, images=imgs or None)
-        if not v or not isinstance(v.get("fields"), dict):
+        if not isinstance(v, dict) or not isinstance(v.get("fields"), dict):
             stats["llm_errors"] += 1
             audit.append({"qid": r["qid"], "verdict": "llm_error"})
             continue
@@ -617,10 +684,6 @@ def clean_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None,
         f"fixed {stats['fixed']}, severe {stats['severe']}, "
         f"lint dropped {stats['lint_dropped']}, errors {stats['llm_errors']}")
     return summary
-
-
-def has_clean(ctx: context.Ctx, name: str) -> bool:
-    return (ctx.interim_dir / f"{Path(name).stem}.clean.jsonl").is_file()
 
 
 def clean_files(ctx: context.Ctx, names: list[str], log=print, cancel=None,

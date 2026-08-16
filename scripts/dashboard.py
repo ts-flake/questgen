@@ -1,7 +1,12 @@
-"""questgen v1 dashboard. M1: Sources tab — preview original/, range-select pages,
-crop / mask, merge, save to raw/ (via source_ops, always recorded in ops.json).
+"""questgen dashboard — the local UI for the whole pipeline.
 
-stdlib + PyMuPDF only.  Run:  python3 scripts/dashboard.py  →  http://127.0.0.1:8760
+Four tabs: Sources (preview a PDF, range-select / crop / mask pages, save to raw/ via
+source_ops, always recorded in ops.json), Pipeline (run extract -> interim -> clean ->
+tag -> build DB, with a guard before overwriting an edited bank), Bank (browse, filter,
+edit, add, export .docx) and AI Gen (generate questions from the bank, then review).
+
+Serves static/ and binds to 127.0.0.1 only; it reads and writes the content tree directly.
+stdlib + PyMuPDF.  Run:  python3 scripts/dashboard.py  ->  http://127.0.0.1:8760
 """
 from __future__ import annotations
 
@@ -219,11 +224,18 @@ def _apply_edit_fields(r: dict, ed: dict) -> None:
     r["options"] = opts or None
     av = (ed.get("answer") or "").strip()
     r["answer"] = {"value": av, "kind": "human"} if av else None
+    aa = (ed.get("answer_area") or "").strip()
+    r["answer_area"] = aa or None
+    # The editor now sends the per-part fields, and finalize_parts preserves them, so an
+    # emptied box actually clears (a carry-across would silently restore the old value).
     r["parts"] = ib.finalize_parts([p for p in (ed.get("parts") or []) if p.get("text", "").strip()])
     if "imgs" in ed:                              # persist uploads / deletions
         r["imgs"] = [a for a in ed["imgs"] if isinstance(a, dict) and a.get("path")]
     r["kind"] = "mcq" if r["options"] else "question"
     ib.canon_entry(r)                             # "(1)" options (answer follows), "(a)" parts
+    ib.apply_answer_area(r)                       # keep the schema invariant on human edits
+    ib.apply_part_answers(r)                      # parts <-> entry summary stay consistent
+    r["meta"]["schema"] = ib.SCHEMA_VERSION
     typ = (ed.get("type") or "").strip()
     topics, diff = ed.get("topic"), (ed.get("difficulty") or "").strip()
     if typ or topics is not None or diff:         # human-set topic / type / difficulty tags
@@ -748,10 +760,14 @@ def ai_assist(body: dict) -> dict:
     return {"output": out}
 
 
-def open_in_file_manager(ctx: context.Ctx, which: str) -> dict:
+def open_in_file_manager(ctx: context.Ctx, which: str, name: str = "") -> dict:
     """Reveal a source folder (original/ or raw/) or the worksheet outputs/ folder in the OS
-    file manager. Restricted to the project's own folders — only opens a folder, never reads
-    or returns file contents."""
+    file manager, selecting `name` within it when given. Restricted to the project's own
+    folders — only opens or reveals, never reads or returns file contents.
+
+    `name` comes from the browser, so it must be a bare filename that resolves to a real file
+    directly inside the folder; anything else (a path, a symlink out, a missing file) is
+    rejected rather than handed to the file manager."""
     dirs = {"original": ctx.original_dir, "raw": ctx.raw_dir, "outputs": ctx.outputs_dir}
     if which not in dirs:
         raise ValueError("bad which")
@@ -765,14 +781,25 @@ def open_in_file_manager(ctx: context.Ctx, which: str) -> dict:
             target.mkdir(parents=True, exist_ok=True)   # created on first export; make it if empty
         else:
             raise ValueError(f"folder does not exist: {which}/")
-    p = str(target)
+    reveal = None
+    if name:
+        if name != Path(name).name:
+            raise ValueError("bad file name")
+        f = (target / name).resolve()
+        if f.parent != target or not f.is_file():
+            raise ValueError("file not in that folder")
+        reveal = f
     if sys.platform == "darwin":
-        subprocess.run(["open", p], check=False)
+        subprocess.run(["open", "-R", str(reveal)] if reveal else ["open", str(target)],
+                       check=False)
     elif sys.platform.startswith("win"):
-        os.startfile(p)                                  # type: ignore[attr-defined]  # noqa
+        if reveal:
+            subprocess.run(["explorer", f"/select,{reveal}"], check=False)
+        else:
+            os.startfile(str(target))                    # type: ignore[attr-defined]  # noqa
     else:
-        subprocess.run(["xdg-open", p], check=False)
-    return {"ok": True, "opened": which}
+        subprocess.run(["xdg-open", str(target)], check=False)   # no portable "reveal"
+    return {"ok": True, "opened": which, "revealed": reveal.name if reveal else ""}
 
 
 def _backups_dir(ctx: context.Ctx) -> Path:
@@ -950,40 +977,6 @@ def bank_entries(ctx: context.Ctx) -> list[dict]:
         _BANK_CACHE.pop(next(iter(_BANK_CACHE)))
     return rows
 
-
-def normalize_bank(ctx: context.Ctx, body: dict) -> dict:
-    """One-off migration of this source's interim files onto the current internal label
-    conventions ('(1)' option keys with the answer remapped, parenthesised part labels).
-    Backs up first, and keeps each stem's stage ranking (see _reseal_stage_order)."""
-    backup = None
-    if body.get("backup", True):
-        try:
-            backup = backup_db(ctx, tag="pre-normalize")["file"]
-        except Exception:
-            pass
-    files, n_changed = [], 0
-    for stem in sorted({p.name.split(".")[0] for p in ctx.interim_dir.glob("*.jsonl")}):
-        _live, live_stage = interim_build.newest_stage(ctx, stem)
-        touched = False
-        for _stage, p in interim_build.existing_stages(ctx, stem):
-            rows = _read_jsonl(p)
-            hits = sum(1 for r in rows if interim_build.canon_entry(r))
-            if not hits:
-                continue
-            _write_jsonl(p, rows)
-            files.append(p.name)
-            n_changed += hits
-            touched = True
-        if touched:
-            _reseal_stage_order(ctx, stem, live_stage)
-    return {"ok": True, "files": files, "entries": n_changed, "backup": backup}
-
-
-# ---------------------------------------------------------------- usage log
-# "Used in real teaching" is a decision the user makes AFTER reviewing an export, so it is
-# never inferred: the export panel asks, and only then is it recorded. Kept at stage level
-# (db/usage.json, keyed level/source/qid) so counts survive interim re-runs, restores and
-# re-tagging — they are teaching history, not extraction state.
 
 def _usage_path(ctx: context.Ctx) -> Path:
     return ctx.stage_dir / "db" / "usage.json"
@@ -1215,7 +1208,7 @@ class H(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
         try:
             if u.path == "/":
-                body = HTML.encode()
+                body = (STATIC_DIR / "index.html").read_text(encoding="utf-8").encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -1241,7 +1234,8 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/files":
                 self._json(list_files(ctx_from_query(q)))
             elif u.path == "/api/open_folder":
-                self._json(open_in_file_manager(ctx_from_query(q), q.get("which", ["original"])[0]))
+                self._json(open_in_file_manager(ctx_from_query(q), q.get("which", ["original"])[0],
+                                                q.get("f", [""])[0]))
             elif u.path == "/api/ops":
                 self._json(source_ops.load_ops(ctx_from_query(q).source_dir))
             elif u.path == "/api/map":
@@ -1307,19 +1301,6 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "image/jpeg" if p.suffix != ".png" else "image/png")
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "max-age=86400")
-                self.end_headers()
-                self.wfile.write(data)
-            elif u.path == "/api/download":
-                ctx = ctx_from_query(q)
-                rel = q["f"][0].replace("\\", "/")
-                p = (ctx.outputs_dir / rel).resolve()
-                if ".." in rel or not str(p).startswith(str(ctx.outputs_dir.resolve())) or not p.is_file():
-                    return self._err("no such file", 404)
-                data = p.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", f'attachment; filename="{p.name}"')
-                self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
             else:
@@ -1454,8 +1435,8 @@ class H(BaseHTTPRequestHandler):
                 if not entries:
                     raise ValueError("no valid qids")
                 out = ctx.outputs_dir / f"{title}.docx"
-                mcq = str(body.get("mcq_label") or "letter_paren")
-                blank = str(body.get("blank") or "underscore")
+                mcq = str(body.get("mcq_label") or "letter_bare")
+                blank = str(body.get("blank") or "dots")
                 cap = body.get("caption") if isinstance(body.get("caption"), dict) else {}
                 # answer_format: none | end (answers table appended) | teacher (separate red
                 # inline copy) | both. `with_solutions` kept for back-compat (= "end").
@@ -1487,9 +1468,6 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/clear_usage":
                 with LOCK:
                     self._json(clear_usage(ctx, body))
-            elif u.path == "/api/normalize_bank":
-                with LOCK:
-                    self._json(normalize_bank(ctx, body))
             elif u.path == "/api/restore_entry":
                 with LOCK:
                     self._json(restore_entry(ctx, body))
@@ -1539,9 +1517,10 @@ class H(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------- frontend
 
 # UI is a small static frontend under static/ (index.html + dashboard.css + dashboard.js),
-# served by do_GET; index.html is the shell, /static/<file> serves the css/js.
+# served by do_GET; index.html is the shell, /static/<file> serves the css/js. All three are
+# read per request, so an edit shows up on refresh — the shell used to be read at import and
+# needed a restart, which silently served a stale UI while css/js hot-reloaded around it.
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"   # questgen/static (sibling of scripts/)
-HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 STATIC_TYPES = {".css": "text/css", ".js": "application/javascript", ".html": "text/html",
                 ".svg": "image/svg+xml", ".map": "application/json", ".woff2": "font/woff2"}
 

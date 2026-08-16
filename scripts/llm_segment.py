@@ -1,22 +1,15 @@
-"""M3 v3 (experiment): LLM-driven segmentation, deterministic verbatim assembly.
+"""M3: LLM-driven segmentation, deterministic verbatim assembly.
 
-Format-independent replacement for the regex segmenter. The LLM only LABELS each
-MinerU block with a role (it never rewrites text); a deterministic assembler groups
-blocks between question-start markers and builds entries VERBATIM from the original
-block content. Robust across sources because the model reads meaning ("this starts
-question 1") instead of matching a numbering convention.
+The LLM only LABELS each MinerU block with a role; it never rewrites text. A
+deterministic assembler then groups blocks between question-start markers and builds
+entries VERBATIM from the original block content. That split is the point: the model
+reads meaning ("this starts question 1") rather than matching a numbering convention,
+so a new paper layout does not need new parsing rules.
 
-Blocks are the atomic unit (verified: MinerU keeps each sentence/equation/figure in
-one block; a single question just spans several blocks). One label per block.
-
-Roles: q (starts a numbered question) | body (stem continuation) | part (sub-part
-(a)/(b)/...) | option (MCQ choice, may be a figure/table) | figure (content diagram)
-| solution (worked answer) | noise (header/footer/instructions/blank).
+Layout tables are rewritten into ordinary blocks first (table_split), because a table
+reaches the labeler only as a short preview and one table can hold several questions.
 
 Answer files (<stem>_ans) are labeled the same way; solutions pair to questions by qno.
-
-CLI: python3 scripts/llm_segment.py --all [--source ...]
-Uses config.yaml `llm:`. QUESTGEN_LLM_MOCK=1 = heuristic labels (no API), for plumbing.
 """
 from __future__ import annotations
 
@@ -28,6 +21,7 @@ from pathlib import Path
 import context
 import interim_build as ib
 import llm_clean
+import table_split
 
 CHUNK = 90          # blocks per labeling call
 OVERLAP = 6         # carried context blocks between chunks
@@ -80,16 +74,22 @@ For each answer:
   for the first answers until a new heading appears in the blocks.
 - "qno": question number as plain digits ("Q1" -> "1"). If an answer has NO printed number (OCR
   dropped it), infer it from position — the next number after the previous answer.
+- "part": the sub-part this record answers, as printed — "(a)", "(b)(i)", "(ii)". Use "" when the
+  record covers the whole question. A key is often laid out with ONE ROW PER SUB-PART; emitting one
+  record per row is fine AS LONG AS every record carries its "qno" and its "part". A bare "(ii)"
+  belongs to the last lettered part seen, so report it as "(b)(ii)".
 - "answer": the final answer(s). For multiple-choice, the option key (A/B/C/D or 1-4). Otherwise the
-  final numeric/expression result. If the question has MULTIPLE PARTS (a),(b),(i)... capture EVERY
-  part's answer, labelled, e.g. "(a) $5$; (b)(i) $12\\,\\mathrm{N}$; (b)(ii) $3.0$". Do NOT return only
-  one part's answer. Wrap latex in $...$. Use "" only if there is genuinely no final answer.
+  final numeric/expression result. If you put a whole multi-part question in ONE record, label the
+  parts inline: "(a) $5$; (b)(i) $12\\,\\mathrm{N}$; (b)(ii) $3.0$" — never return just one part's
+  answer. Wrap latex in $...$. Use "" only if there is genuinely no final answer (a blank cell).
+  BEWARE: a key usually has a MARKS column — a lone small integer in its own narrow column is the
+  mark for that row, NOT the answer. Never report a mark as the answer.
 - "solution": the working/explanation, faithful to the source (do not invent), latex wrapped in $...$,
   HTML <table> kept as-is. "" if none.
 - "figs": array of block indices [i] whose blocks are solution figures/diagrams for THIS answer (else []).
 
 Read EVERY block. Do not merge two answers, do not split one. OUTPUT exactly ONE json array, no other text:
-[{"section":"Section A","qno":"1","answer":"D","solution":"...","figs":[]}, {"section":"Section A","qno":"2","answer":"(a) $5$; (b) $9.4$","solution":"...","figs":[5]}]
+[{"section":"Section A","qno":"1","part":"","answer":"D","solution":"...","figs":[]}, {"section":"","qno":"11","part":"(b)(iii)","answer":"$120$","solution":"...","figs":[]}]
 """
 
 
@@ -129,11 +129,17 @@ def _heuristic_labels(blocks: list[dict]) -> dict:
 
 
 def label_blocks(blocks: list[dict], ep, log=print, cancel=None) -> dict:
-    """Return {block_index: {"role":..., "label":...}} for every block."""
+    """Return {block_index: {"role":..., "label":...}} for every block.
+
+    Blocks carrying a `_role` hint were already decided structurally (see table_split) and
+    are neither sent to the model nor overwritten by it."""
+    hinted = {b["_i"]: {"role": b["_role"], "label": b.get("_label", "")}
+              for b in blocks if b.get("_role")}
+    blocks = [b for b in blocks if not b.get("_role")]
     if os.environ.get("QUESTGEN_LLM_MOCK") or ep is None:
-        return _heuristic_labels(blocks)
+        return {**_heuristic_labels(blocks), **hinted}
     sys = SYS_LABEL
-    labels: dict = {}
+    labels: dict = dict(hinted)
     i = 0
     while i < len(blocks):
         if cancel is not None and cancel.is_set():
@@ -204,10 +210,6 @@ def parse_options(text: str) -> dict | None:
 
 # ---------------------------------------------------------------- assembly (verbatim)
 
-def _block_by_i(blocks: list[dict]) -> dict:
-    return {b["_i"]: b for b in blocks}
-
-
 # roman numerals need their own alternative: a bare [a-z] only ever consumed ONE letter, so
 # "(ii)"/"(iii)"/"(iv)" never matched and the marker stayed duplicated in the part text.
 _PART_LABEL = re.compile(r"^\s*\(?\s*(?:[ivx]{2,4}|[a-z])\s*[).]\s*", re.I)
@@ -233,12 +235,16 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
             entries.append(cur)
         cur, cur_part = None, None
 
+    def prov(b):
+        """Provenance index: the ORIGINAL MinerU block, even for blocks a pass synthesised."""
+        return b.get("_src_i", b["_i"])
+
     def open_q(b, qno="", stem="", flags=()):
         nonlocal cur, cur_part
         close()
         cur = {"qno": str(qno or len(entries) + 1), "section": cur_section, "stem": stem,
                "parts": [], "options": {}, "assets": [], "solution": [],
-               "pages": {b["page_idx"]}, "blocks": [b["_i"], b["_i"]], "flags": list(flags)}
+               "pages": {b["page_idx"]}, "blocks": [prov(b), prov(b)], "flags": list(flags)}
         cur_part = None
         return cur
 
@@ -246,7 +252,7 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
         """Add one content block to the open question (stem/part/option/asset/solution)."""
         nonlocal cur_part
         cur["pages"].add(b["page_idx"])
-        cur["blocks"][1] = max(cur["blocks"][1], b["_i"])
+        cur["blocks"][1] = max(cur["blocks"][1], prov(b))
         is_media = b["type"] in ("image", "table", "chart")
         # options first: a table/inline that holds A-D is consumed structurally,
         # its rendered image is redundant (no asset).
@@ -283,7 +289,7 @@ def assemble_questions(blocks: list[dict], labels: dict) -> list[dict]:
         else:
             cur["stem"] = (cur["stem"] + "\n" + txt).strip()
 
-    # --- content before the first "q" is NOT dropped (it used to be, silently) -------------
+    # --- content before the first "q" ------------------------------------------------------
     # Two shapes, told apart by whether a sub-part starts there:
     #   * a "part" appears  -> the paper opens straight at "(a)" with no stem, so no block could
     #     carry a number: open an IMPLICIT question (flagged) rather than lose the whole thing.
@@ -401,7 +407,11 @@ def interpret_answers(blocks: list[dict], ep, log=print, cancel=None) -> list[di
                 # collapse even when the LLM reformats them between chunks (escaped $, ; vs
                 # \n, extra steps). Without a section, keep content in the key so genuine
                 # un-headed restarts (two different 'Q7') survive.
-                key = (_norm_section(section), qno) if section else ("", qno, (answer or "")[:40], sol[:60])
+                # `part` is in the key: a key laid out per sub-part emits several records with
+                # the same (section, qno), and they must NOT dedup into one.
+                part = str(r.get("part") or "").strip()
+                key = ((_norm_section(section), qno, part) if section
+                       else ("", qno, part, (answer or "")[:40], sol[:60]))
                 if key in seen:                       # overlap re-read -> merge into existing
                     rec = out[seen[key]]
                     if answer and not rec["answer"]:
@@ -411,9 +421,47 @@ def interpret_answers(blocks: list[dict], ep, log=print, cancel=None) -> list[di
                     rec["figs"].extend(fi for fi in figs if fi not in rec["figs"])
                     continue
                 seen[key] = len(out)
-                out.append({"section": section, "qno": qno, "answer": answer,
-                            "solution": sol, "figs": figs})
+                out.append({"section": section, "qno": qno, "part": str(r.get("part") or "").strip(),
+                            "answer": answer, "solution": sol, "figs": figs})
         i += CHUNK
+    return out
+
+
+def merge_answer_records(answers: list[dict]) -> list[dict]:
+    """Collapse the records of ONE question into one record.
+
+    An answer key laid out per sub-part (a table row per "(a)", "(b)(i)", …) makes the
+    interpreter emit several records that all carry the same question number. match_answers
+    pairs a question with a single record, so the rest would be dropped silently — five of
+    six answers, in the paper this was found on.
+
+    Merging rebuilds the packed "(a) …; (b)(i) …" form the rest of the pipeline already
+    understands, so split_by_parts can put each piece on its part. When the interpreter did
+    not report a part label the pieces are still joined, keeping them visible for a human
+    rather than lost."""
+    out: list[dict] = []
+    by_key: dict = {}
+    for a in answers:
+        key = (_norm_section(a.get("section", "")), str(a.get("qno", "")))
+        first = by_key.get(key)
+        if first is None:
+            lab = str(a.get("part") or "").strip()
+            if lab:                                   # keep it labelled like the ones merged in
+                for field in ("answer", "solution"):
+                    if (a.get(field) or "").strip():
+                        a[field] = f"{lab} {a[field].strip()}"
+            by_key[key] = a
+            out.append(a)
+            continue
+        for field in ("answer", "solution"):
+            piece = (a.get(field) or "").strip()
+            if not piece:
+                continue
+            label = str(a.get("part") or "").strip()
+            piece = f"{label} {piece}".strip() if label else piece
+            prev = (first.get(field) or "").strip()
+            first[field] = f"{prev}; {piece}" if prev else piece
+        first.setdefault("figs", []).extend(a.get("figs") or [])
     return out
 
 
@@ -447,6 +495,15 @@ def match_answers(questions: list[dict], answers: list[dict]) -> list:
         dq = queues.get(str(q.get("qno", "")))
         if dq:
             result[qi] = answers[dq.popleft()]
+    # Pass 3: a question whose number was never PRINTED (the paper opens straight at "(a)",
+    # so assemble_questions numbered it by position) cannot match a key that uses the real
+    # number. Its qno carries no information, so fall back to reading order over whatever
+    # records are still unclaimed.
+    taken = {id(a) for a in result if a is not None}
+    leftover = deque(a for a in answers if id(a) not in taken)
+    for qi, q in enumerate(questions):
+        if result[qi] is None and "implicit_question_start" in (q.get("flags") or []) and leftover:
+            result[qi] = leftover.popleft()
     return result
 
 
@@ -484,6 +541,7 @@ def extract_answer(solution: str, options: dict, has_parts: bool = False) -> dic
 
 def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
     blocks = ib.load_blocks(ctx, stem)
+    blocks = table_split.split_tables(blocks)     # layout tables -> ordinary blocks (+role hints)
     labels = label_blocks(blocks, ep, log=log, cancel=cancel)
     unknown = sorted({b["_unknown_type"] for b in blocks if b.get("_unknown_type")})
 
@@ -497,8 +555,9 @@ def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
         answers = interpret_answers(ablocks, ep, log=log, cancel=cancel)
 
     raw = assemble_questions(blocks, labels)
-    # layered pairing: (section, qno) exact, else same-qno occurrence order. Handles
-    # per-section number restarts without the old "merge both Q7, hope clean prunes".
+    # layered pairing: (section, qno) exact, else same-qno occurrence order — a paper whose
+    # numbering restarts per section has several "Q7", and each must pair with its own answer.
+    answers = merge_answer_records(answers)      # a per-sub-part key emits one record per row
     matched = match_answers(raw, answers)
     out_rows = []
     for idx, e in enumerate(raw):
@@ -550,8 +609,8 @@ def build_one(ctx: context.Ctx, stem: str, ep, log=print, cancel=None) -> dict:
     dropped = [i for i in content_blocks if i not in used]
     report = {
         "file": stem, "questions": len(out_rows), "engine": "llm_segment",
-        "with_solution": sum(1 for r in out_rows if r["solution"]),
-        "with_answer": sum(1 for r in out_rows if r["answer"]),
+        "with_solution": sum(1 for r in out_rows if ib.has_answer(r, "solution")),
+        "with_answer": sum(1 for r in out_rows if ib.has_answer(r)),
         "mcq": sum(1 for r in out_rows if r["kind"] == "mcq"),
         "flagged": sum(1 for r in out_rows if r["flags"]),
         "blocks_content": len(content_blocks), "blocks_dropped": len(dropped),
