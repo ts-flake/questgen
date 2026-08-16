@@ -9,19 +9,27 @@ step). The only external calls are to a PDF-extraction service (MinerU) and an
 OpenAI-compatible LLM endpoint — both optional and configured by you.
 
 ```
-PDF ──▶ extract (MinerU) ──▶ interim jsonl ──▶ clean (LLM) ──▶ tag (LLM) ──▶ SQLite
- (Sources)     (Pipeline) ······································· (Pipeline) ····▶ (Bank) ──▶ .docx
+PDF ────────▶ extract (MinerU) ──▶ interim jsonl ──▶ clean (LLM) ──▶ tag (LLM) ─────▶ SQLite ──▶ export
+(Sources)     (Pipeline) ·········································· (Pipeline) ·····▶ (Bank) ──▶ .docx
 ```
 
 ## Screenshots
 
-| Bank — browse / filter / export | Item editor with live preview |
-|---|---|
-| ![Bank](docs/screenshots/01-bank.jpg) | ![Editor](docs/screenshots/02-editor.jpg) |
+| Bank — browse / filter / export |
+|---|
+| ![Bank](docs/screenshots/01-bank.jpg) |
 
-| Settings — models & API keys (masked) | Dark theme |
-|---|---|
-| ![Settings](docs/screenshots/03-settings.jpg) | ![Dark](docs/screenshots/04-bank-dark.jpg) |
+| Item editor with live preview |
+|---|
+| ![Editor](docs/screenshots/02-editor.jpg) |
+
+| Settings — models & API keys (masked) |
+|---|
+| ![Settings](docs/screenshots/03-settings.jpg) |
+
+| Dark theme |
+|---|
+| ![Dark](docs/screenshots/04-bank-dark.jpg) |
 
 ---
 
