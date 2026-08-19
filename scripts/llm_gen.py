@@ -14,7 +14,7 @@ import re
 import time
 
 import context
-import build_db
+import bank
 import interim_build as ib
 import llm_clean
 
@@ -71,7 +71,7 @@ def topic_bank(ctx: context.Ctx, topics: list[str]) -> list[dict]:
     """Every bank entry (this subject/stage) tagged with ANY of the target topics — the pool
     for both few-shot sampling and the novelty check."""
     tset = set(topics)
-    return [r for r in build_db.collect(ctx)
+    return [r for r in bank.collect(ctx)
             if tset & set((r.get("tags") or {}).get("topic") or [])]
 
 

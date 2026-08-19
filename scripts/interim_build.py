@@ -352,7 +352,7 @@ def canon_entry(row: dict) -> bool:
 # THE single definition of "which interim file holds the live entries for a stem".
 # tagged > clean > raw, but a later stage only wins while it is at least as fresh as
 # the stage it derives from — a re-run of an earlier stage supersedes a now-stale
-# derivative. The dashboard bank, the entry editor and build_db all go through this,
+# derivative. The dashboard bank, the entry editor and the bank check all go through this,
 # so an edit can never be written into a file the bank isn't reading.
 
 STAGE_SUFFIX = {"raw": ".jsonl", "clean": ".clean.jsonl", "tagged": ".tagged.jsonl"}

@@ -34,7 +34,7 @@ try:
     EXPORT_ERR = None
 except Exception as _e:
     export_docx, EXPORT_ERR = None, f"{_e} — run: pip install python-docx pillow"
-import build_db
+import bank
 import interim_build
 import llm_clean
 import llm_gen
@@ -114,11 +114,9 @@ def pipeline_status(ctx: context.Ctx) -> dict:
         files.append({"name": p.name, "size_mb": round(p.stat().st_size / 1e6, 1),
                       "extracted": mineru_extract.is_extracted(ctx, p.name),
                       "interim": interim, "clean": clean, "tagged": tagged, "live": live})
-    dbfile = ctx.stage_dir / "db" / "questgen.sqlite"
     return {"files": files, "token": bool(mineru_extract.load_token()),
             "llm": (llm_clean.endpoint() or {}).get("model"),
             "vlm": (llm_clean.vlm_endpoint() or {}).get("model"),
-            "db": dbfile.is_file(),
             "ctx": {"subject": ctx.subject, "stage": ctx.stage, "level": ctx.level, "source": ctx.source},
             "mock": bool(os.environ.get("MINERU_MOCK"))}
 
@@ -304,7 +302,7 @@ def save_edit(ctx: context.Ctx, body: dict) -> dict:
 def add_entry(ctx: context.Ctx, body: dict) -> dict:
     """Create a brand-new, manually-authored question in this source's bank. It lives in a
     dedicated `manual.jsonl` stage file alongside the extracted stems, so it shows up in the
-    Bank right away (and flows into build_db like any other entry). Reuses the item-editor
+    Bank right away (and is validated like any other entry). Reuses the item-editor
     fields plus topic/difficulty tags."""
     ib = interim_build
     ed = body.get("entry") or {}
@@ -611,7 +609,7 @@ def gen_reject(ctx: context.Ctx, body: dict) -> dict:
 
 def gen_accept(ctx: context.Ctx, body: dict) -> dict:
     """Promote a pending generated entry into the synthetic 'ai_generated' source so it
-    joins the bank + build_db; remove it from the queue."""
+    joins the bank; remove it from the queue."""
     qid = body.get("qid")
     rows = _read_pending(ctx)
     hit = next((r for r in rows if r.get("qid") == qid), None)
@@ -1382,7 +1380,7 @@ class H(BaseHTTPRequestHandler):
                 for n in names:
                     if "/" in n or ".." in n:
                         raise ValueError(f"bad name: {n}")
-                if step in ("extract", "interim", "clean", "tag", "db", "all"):
+                if step in ("extract", "interim", "clean", "tag", "validate", "all"):
                     # Guard: interim/clean/tag REWRITE the bank for these files. Ask before
                     # overwriting an existing bank, and offer the snapshot in the same breath
                     # (the client re-posts with confirm/backup_first).
@@ -1398,7 +1396,7 @@ class H(BaseHTTPRequestHandler):
                     # restarting the long-running dashboard process
                     import importlib
                     for m in (context, source_ops, mineru_extract, interim_build, llm_clean,
-                              llm_segment, llm_tag, build_db):
+                              llm_segment, llm_tag, bank):
                         importlib.reload(m)
                     use_vlm = bool(body.get("use_vlm"))
                     thinking = True if body.get("thinking") else False
@@ -1416,8 +1414,8 @@ class H(BaseHTTPRequestHandler):
                                                   use_vlm=use_vlm, thinking=thinking, chem=chem)
                         if step in ("tag", "all") and not cancel.is_set():
                             llm_tag.tag_files(ctx, names, log=log, cancel=cancel, thinking=thinking)
-                        if step in ("db", "all") and not cancel.is_set():
-                            build_db.build(ctx, log=log)
+                        if step in ("validate", "all") and not cancel.is_set():
+                            bank.check(ctx, log=log)
                     start_job(step, fn)
                 else:
                     raise ValueError(f"unknown step: {step}")

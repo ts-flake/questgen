@@ -266,7 +266,7 @@ async function loadPipe(){
   $('pipeStat').textContent=(p.mock?'MOCK · ':'')+(p.token?T('token ✓','Token ok'):IC('warn')+T(' 无 MinerU token',' No MinerU token'))
     +' · '+(p.llm?('LLM: '+p.llm):T('⚠ 无 LLM 端点','⚠ No LLM endpoint'))
     +' · '+(p.vlm?('VLM: '+p.vlm):T('VLM 未配置','VLM off'))
-    +' · DB: '+(p.db?'✓':'—');
+    ;
   const liveBadge=s=>s?`<span class="badge ok" title="${T('Bank 读取的阶段','Stage the Bank serves')}">${s}</span>`:`<span class="badge no">—</span>`;
   $('pipeRows').innerHTML=p.files.map(f=>{
     const it=f.interim, cl=f.clean, tg=f.tagged;
