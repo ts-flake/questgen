@@ -294,16 +294,88 @@ def chat_text(ep: dict, system: str, user: str, retries: int = 2) -> str | None:
     return None
 
 
-# A backslash that JSON does not recognise as an escape introducer. The payload is
-# LaTeX-heavy, and the model intermittently writes "$\ce{C16H34}$" where JSON needs
-# "$\\ce{...}$" — one unescaped backslash makes the WHOLE reply unparseable. Matching
-# valid escapes first means an already-correct "\\ce" is consumed as a unit and left
-# alone; only a lone backslash is doubled.
-_ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|["\\/bfnrt])|\\')
+# LaTeX in a JSON string collides with JSON's own escapes. Two separate problems:
+#
+#   \ce{...}, \mathrm, \,   -> \c \m \, are not JSON escapes, so the WHOLE reply fails to
+#                              parse and the entry is skipped. Loud.
+#   \frac, \times, \theta   -> \f \t ARE JSON escapes, so json.loads happily returns a
+#                              formfeed/tab and the corruption reaches the bank. Silent,
+#                              and \times/\frac are the two commonest commands here.
+#
+# So the ambiguous letters (b f n r t u) cannot be decided by shape alone: "\nabla" is a
+# macro but "line1\nline2" is a real line break. Only a known macro is read as LaTeX;
+# anything else keeps today's JSON meaning, so a macro missing from this list behaves
+# exactly as it does now and this can only fix, never newly break.
+_LATEX_BFNRTU = frozenset("""
+begin because bar barwedge beta bigcap bigcup bigl bigr binom bmod boldsymbol bot bullet
+fbox flat forall frac frown
+nabla ne neg neq nexists ni nmid nolimits nonumber not notin nparallel nsubseteq nu
+rangle rceil rfloor rho right rightarrow rightleftharpoons rlap rm
+tan tanh text textbf textcolor textit textrm textstyle tfrac therefore theta tilde times to
+top triangle
+underbrace underline underset uparrow upharpoonright upsilon
+""".split())
+_HEX = frozenset("0123456789abcdefABCDEF")
 
 
-def _repair_escapes(txt: str) -> str:
-    return _ESCAPE.sub(lambda m: m.group(0) if len(m.group(0)) > 1 else "\\\\", txt)
+def _latex_macro(run: str) -> str:
+    """Longest whitelisted macro at the start of a letter run ('' if none)."""
+    for n in range(len(run), 0, -1):
+        if run[:n] in _LATEX_BFNRTU:
+            return run[:n]
+    return ""
+
+
+def _repair_json(txt: str) -> str:
+    """Make a model reply parse as the JSON it meant, scanning string bodies only.
+
+    Fixes an unescaped LaTeX backslash and a raw control character (a literal newline inside
+    a string also kills the whole reply). Already-correct input is returned unchanged: a
+    proper \\frac is consumed as one escaped backslash, a proper \\n stays a line break."""
+    out, i, n, in_str = [], 0, len(txt), False
+    while i < n:
+        c = txt[i]
+        if not in_str:
+            out.append(c)
+            in_str = c == '"'
+            i += 1
+            continue
+        if c == '"':
+            out.append(c)
+            in_str = False
+            i += 1
+            continue
+        if ord(c) < 0x20:                       # raw control char: JSON requires it escaped
+            out.append(json.dumps(c)[1:-1])
+            i += 1
+            continue
+        if c != "\\":
+            out.append(c)
+            i += 1
+            continue
+        nxt = txt[i + 1] if i + 1 < n else ""
+        if nxt in ('"', "\\", "/"):                # already a valid escape — leave it alone
+            out.append(c + nxt)
+            i += 2
+            continue
+        j = i + 1
+        while j < n and txt[j].isascii() and txt[j].isalpha():
+            j += 1
+        run = txt[i + 1:j]
+        macro = _latex_macro(run) if run and run[0] in "bfnrtu" else run
+        if macro:                               # a LaTeX macro: escape the backslash for JSON
+            out.append("\\\\" + macro)
+            i += 1 + len(macro)
+        elif nxt == "u" and set(txt[i + 2:i + 6]) <= _HEX and i + 6 <= n:
+            out.append(txt[i:i + 6])            # \uXXXX
+            i += 6
+        elif nxt in "bfnrt":
+            out.append(c + nxt)                 # a real escape (line break, tab, …)
+            i += 2
+        else:
+            out.append("\\\\" + nxt)            # \, \{ \$ … not JSON, so it is content
+            i += 2
+    return "".join(out)
 
 
 def _parse_json(txt: str):
@@ -317,7 +389,7 @@ def _parse_json(txt: str):
     bare parts list, which the caller then read as a patch. A payload we cannot
     decode is an honest None (the caller retries, then records an llm_error)."""
     txt = re.sub(r"```(?:json)?|```", "", txt).strip()
-    for s in (txt, _repair_escapes(txt)):
+    for s in (_repair_json(txt), txt):
         try:
             return json.loads(s)
         except Exception:
