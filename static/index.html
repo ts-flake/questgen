@@ -52,12 +52,12 @@
 <div id="viewPipe">
   <div id="pipeCtx" style="font-family:var(--serif);font-size:15px;padding:2px 0"></div>
   <div class="row">
-    <button onclick="runStep('all')" data-ic="play"><span data-en="One-click extract→…→tag→db (selected)">一键 extract→…→tag→db (选中)</span></button>
+    <button onclick="runStep('all')" data-ic="play"><span data-en="One-click extract→…→tag→validate (selected)">一键 extract→…→tag→validate (选中)</span></button>
     <button onclick="runStep('extract')">Extract</button>
     <button onclick="runStep('interim')">Interim</button>
     <button onclick="runStep('clean')">Clean</button>
     <button onclick="runStep('tag')">Tag</button>
-    <button onclick="runStep('db')">Build DB</button>
+    <button onclick="runStep('validate')" title="校验全库条目, 不写入任何文件" data-en-title="Validate every bank entry; writes nothing">Validate</button>
     <button class="danger" onclick="J('/api/cancel',{method:'POST',body:'{}'})" data-ic="stop"><span data-en="Cancel">取消</span></button>
     <span id="pipeStat" class="hint"></span>
   </div>

@@ -1,7 +1,7 @@
 # Interim schema (the question-bank contract)
 
-`interim/*.jsonl` is the **product** of this project — the editable source of truth. The SQLite
-DB, the docx export and the dashboard are all rebuildable views over it. This file is the
+`interim/*.jsonl` is the **product** of this project — the editable source of truth. The docx
+export, the dashboard and the AI-generation corpus are all views over it. This file is the
 normative contract for a row: what fields exist, what values are legal, and which conventions
 downstream code may rely on.
 
@@ -191,4 +191,6 @@ and duplicate `type`.
 3. **`flags` are advisory.** Parsing must never depend on them.
 4. **Provenance is preserved.** `meta.blocks` + `imgs[].bbox` must always allow re-cropping from
    the original PDF.
-5. **jsonl is the source of truth.** The DB and any index are rebuildable.
+5. **jsonl is the source of truth.** Every other artefact is a derivation and may be
+   rebuilt or discarded. An index (a DB, a search structure) may only be added together with
+   the code that reads it — a write-only index goes stale silently and misleads.

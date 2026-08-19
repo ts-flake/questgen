@@ -9,7 +9,7 @@ step). The only external calls are to a PDF-extraction service (MinerU) and an
 OpenAI-compatible LLM endpoint — both optional and configured by you.
 
 ```
-PDF ────────▶ extract (MinerU) ──▶ interim jsonl ──▶ clean (LLM) ──▶ tag (LLM) ─────▶ SQLite ──▶ export
+PDF ────────▶ extract (MinerU) ──▶ interim jsonl ──▶ clean (LLM) ──▶ tag (LLM) ─────▶ validate ─▶ export
 (Sources)     (Pipeline) ·········································· (Pipeline) ·····▶ (Bank) ──▶ .docx
 ```
 
@@ -127,7 +127,7 @@ python3 scripts/mineru_extract.py --source my_source     # extract
 python3 scripts/interim_build.py  --source my_source     # deterministic segment → interim jsonl
 python3 scripts/llm_clean.py      --source my_source     # LLM clean
 python3 scripts/llm_tag.py        --source my_source     # LLM tag (taxonomy)
-python3 scripts/build_db.py                              # assemble SQLite
+python3 scripts/bank.py                                  # validate the whole bank
 ```
 
 ## Project structure
@@ -142,7 +142,7 @@ questgen/
 │   ├── interim_build.py, llm_segment.py     # PDF layout → structured interim jsonl
 │   ├── table_split.py  #   splits layout tables that hold whole questions
 │   ├── llm_clean.py, llm_tag.py, llm_gen.py # LLM clean / tag / generate
-│   ├── build_db.py     #   interim jsonl → SQLite
+│   ├── bank.py         #   cross-source bank reader + whole-bank validation
 │   └── export_docx.py  #   question bank → .docx worksheets
 ├── static/             # dashboard UI (index.html + dashboard.css + dashboard.js)
 ├── config/             # config.yaml (keys live in gitignored *_key.txt)
@@ -154,7 +154,7 @@ questgen/
 ## Notes
 
 - **jsonl is the source of truth.** The interim `*.jsonl` files are the editable product; the
-  SQLite DB is a rebuildable index.
+  pipeline's later stages and the .docx export are all derivations of it.
 - Extraction preserves MinerU's `$…$` / `$$…$$` math and HTML tables verbatim — downstream steps
   do not rewrite them.
 - The dashboard binds to `127.0.0.1` only. It reads and writes your local content tree directly,
