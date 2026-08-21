@@ -805,6 +805,37 @@ def _backups_dir(ctx: context.Ctx) -> Path:
     return ctx.source_dir / "backups"
 
 
+def _verify_zip(path: Path, sources: dict[str, Path] | None = None) -> None:
+    """Read a backup back and prove it is intact, or raise.
+
+    A zip carries a CRC per member, but only a read checks it — and nothing read a backup
+    until the day it was restored, which is exactly when the original is already gone. So
+    every archive is read back here, at write time, while the source files are still there
+    to compare against. `sources` additionally proves the archive holds the same BYTES as
+    the files it claims to snapshot, which a CRC cannot: it only says the member decompresses
+    to whatever was compressed."""
+    try:
+        zf = zipfile.ZipFile(path)
+    except Exception as e:
+        raise ValueError(f"{path.name}: not a readable archive ({e})") from None
+    with zf:
+        try:
+            bad = zf.testzip()                    # decompresses every member, checks each CRC
+        except Exception as e:                    # a damaged deflate stream raises before naming it
+            raise ValueError(f"{path.name}: archive is damaged ({e})") from None
+        if bad:
+            raise ValueError(f"{path.name}: corrupt member {bad}")
+        if sources is None:
+            return
+        names = set(zf.namelist())
+        missing = sorted(set(sources) - names)
+        if missing:
+            raise ValueError(f"{path.name}: {len(missing)} file(s) missing, e.g. {missing[0]}")
+        for n, src in sources.items():
+            if zf.read(n) != src.read_bytes():
+                raise ValueError(f"{path.name}: {n} does not match the file on disk")
+
+
 def backup_db(ctx: context.Ctx, tag: str = "") -> dict:
     """Snapshot the current source's interim/ jsonl state (the editable source-of-truth
     the bank reads) into a timestamped zip under <source>/backups/. Safe to call before a
@@ -835,7 +866,12 @@ def backup_db(ctx: context.Ctx, tag: str = "") -> dict:
         with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
             for p in files:
                 zf.write(p, p.name)               # flat: interim/ has no subdirs
+        _verify_zip(z, {p.name: p for p in files})
         shutil.copy2(z, dest / name)
+        _verify_zip(dest / name, {p.name: p for p in files})   # and after the copy
+    except Exception:
+        (dest / name).unlink(missing_ok=True)     # never leave a backup we could not verify
+        raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return {"ok": True, "file": name, "n": len(files), "entries": n_entries}
@@ -875,21 +911,37 @@ def restore_db(ctx: context.Ctx, body: dict) -> dict:
     src_zip = _backups_dir(ctx) / name
     if not src_zip.is_file():
         raise ValueError("no such backup")
+    # A restore is only reversible while the pre-restore snapshot exists, so a snapshot that
+    # cannot be taken (or cannot be verified) aborts before anything is overwritten. The one
+    # tolerated case is having nothing to snapshot: restoring into an empty interim/ has
+    # nothing to lose.
     pre = None
     try:
-        pre = backup_db(ctx, tag="pre-restore")["file"]   # reversible: snapshot current first
-    except Exception:
-        pass
+        pre = backup_db(ctx, tag="pre-restore")["file"]
+    except Exception as e:
+        if "interim" not in str(e):
+            raise ValueError(f"restore aborted: could not snapshot the current state first ({e})")
     ctx.interim_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(src_zip) as zf:
-        members = [n for n in zf.namelist() if n and "/" not in n and "\\" not in n and ".." not in n]
-        tmp = Path(tempfile.mkdtemp(prefix="questgen_restore_"))
-        try:
+    # Extract and verify EVERYTHING before interim/ is touched. Copying member by member
+    # straight out of the archive meant a member that failed to decompress left the earlier
+    # ones already written: interim/ became a silent mix of two points in time, and the
+    # caller only saw an exception it would read as "nothing happened".
+    tmp = Path(tempfile.mkdtemp(prefix="questgen_restore_"))
+    try:
+        _verify_zip(src_zip)
+        with zipfile.ZipFile(src_zip) as zf:
+            members = [n for n in zf.namelist()
+                       if n and "/" not in n and "\\" not in n and ".." not in n]
             for n in members:
                 zf.extract(n, tmp)
-                shutil.copy2(tmp / n, ctx.interim_dir / n)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+        staged = [tmp / n for n in members]
+        missing = [n for n, q in zip(members, staged) if not q.is_file()]
+        if missing:
+            raise ValueError(f"restore aborted: {len(missing)} member(s) did not extract")
+        for n, q in zip(members, staged):         # only now is interim/ modified
+            shutil.copy2(q, ctx.interim_dir / n)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     # Re-stamp mtimes so the snapshot's OWN stage ranking comes back: order by the
     # timestamps recorded in the zip, ties broken by stage (the freshness rule prefers
     # the later stage on a tie, and zip clocks only have 2s resolution).
