@@ -23,7 +23,9 @@ import re
 from pathlib import Path
 
 import context
+import interim_build as ib
 import llm_clean
+from prompts import SYS_TMPL
 
 DIFFICULTY = ("basic", "medium", "advance")
 DEFAULT_PROBLEM_TYPES = ("mcq", "short_answer", "structured", "word_problem")
@@ -34,25 +36,6 @@ def problem_types() -> tuple:
     dashboard edit takes effect without restart. Falls back to the built-in default."""
     v = context.CONFIG.get("problem_types")
     return tuple(v) if v else DEFAULT_PROBLEM_TYPES
-
-
-SYS_TMPL = """You classify pre-extracted exam questions. You NEVER change wording, never split/merge, never
-touch answers — you ONLY assign tags, output strict JSON.
-
-You are given TOPICS (the ONLY allowed topic ids) and ENTRIES. For EACH entry emit one object:
-{{"qid":"<copy exactly>",
- "topic":["<1-2 ids, ONLY from TOPICS, the finest applicable>"],
- "type":"{types}",
- "difficulty":"basic|medium|advance"}}
-
-Rules:
-1. topic ids MUST be exact ids from TOPICS. Never invent. If unsure, still pick the single closest.
-2. type: MUST be one of: {types}. Use the entry's structure — mcq if it has options; structured if it
-   has labelled parts (a),(b); word_problem for a real-world scenario needing setup; otherwise the most
-   specific remaining type. Prefer the most specific.
-3. difficulty: basic = single-step recall/definition; medium = routine multi-step; advance = multi-concept,
-   non-routine, or heavy reasoning.
-4. Output ONLY a JSON array, same count/order/ids as ENTRIES. No prose, no code fences."""
 
 
 def _sys() -> str:
@@ -100,7 +83,7 @@ def tag_one(ctx: context.Ctx, stem: str, tax: dict, ep, log=print, cancel=None,
     #                                            and these rows are written straight back
     menu = topic_menu(tax)
     audit = []
-    stats = {"tagged": 0, "bad_topic": 0, "llm_errors": 0}
+    stats = {"tagged": 0, "bad_topic": 0, "llm_errors": 0, "type_overridden": 0}
 
     for i in range(0, len(rows), batch):
         if cancel is not None and cancel.is_set():
@@ -128,8 +111,20 @@ def tag_one(ctx: context.Ctx, stem: str, tax: dict, ep, log=print, cancel=None,
             if bad:
                 stats["bad_topic"] += 1
                 r.setdefault("flags", []).append("topic_invalid")
-            typ = a.get("type") if a.get("type") in problem_types() else (
-                "mcq" if r["kind"] == "mcq" else "structured" if r.get("parts") else "short_answer")
+            # Options are DECISIVE: an entry with options is a multiple-choice item whatever
+            # the model called it. Parts are not — a word problem may well have sub-parts —
+            # so that shape only fills in when the model gave nothing usable. Both names come
+            # from the live vocabulary, so a renamed or translated type list still works, and
+            # an id outside it is never invented (the old fallback hardcoded "short_answer").
+            types = problem_types()
+            model_typ = a.get("type") if a.get("type") in types else None
+            shape_typ = ib.structural_type(r, types)
+            typ = shape_typ if (ib.entry_shape(r) == "mcq" and shape_typ) else (model_typ or shape_typ)
+            if typ and model_typ and typ != model_typ:
+                stats["type_overridden"] += 1
+            if not typ:
+                typ = ""
+                r.setdefault("flags", []).append("no_type")
             diff = a.get("difficulty") if a.get("difficulty") in DIFFICULTY else "medium"
             r["tags"] = {"topic": valid, "type": typ, "difficulty": diff}
             if not valid:

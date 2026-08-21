@@ -22,75 +22,11 @@ import context
 import interim_build as ib
 import llm_clean
 import table_split
+from prompts import SYS_ANSWERS, SYS_LABEL
 
 CHUNK = 90          # blocks per labeling call
 OVERLAP = 6         # carried context blocks between chunks
 PREVIEW = 160       # chars of block text shown to the labeler
-
-SYS_LABEL = """You label blocks of a scanned exam paper by ROLE. You NEVER rewrite or output the text —
-only a role per block index. Read the blocks in order and decide each block's role.
-
-Roles:
-- "section": a section/part heading that groups the questions after it and under which the question
-  numbering (re)starts, e.g. "Section A", "Section B", "Paper 1", "Booklet A", "Part I". NOT a chapter
-  banner or exercise title unrelated to numbering. Give "label" = the heading text (e.g. "Section A").
-- "q": this block STARTS a new numbered question (it contains the question number, e.g. "1", "1.", "Q1").
-- "body": continuation of the CURRENT question's stem (more sentences, equations, given data).
-- "part": starts a sub-part such as (a), (b), (i), (ii). Mark EVERY labelled sub-part as its own
-  "part" block — including the FIRST one "(a)" (do not fold it into the stem/body), and nested
-  "(i)","(ii)" under an "(a)"/"(b)". A structured question typically has several "part" blocks.
-- "option": a multiple-choice option (A/B/C/D or 1/2/3/4), including an option printed as a figure/table.
-- "figure": a diagram/graph/table that is part of the question content (not an option).
-- "solution": worked-solution or answer content.
-- "noise": page header/footer/number, exam rubric/instructions, blank, watermark.
-
-Rules:
-1. Number style varies by paper ("1", "1.", "1)", "Q1"). A sub-step inside a solution like "1." is NOT
-   a question start — judge by meaning and position, not punctuation.
-2. A question of ANY type may have NO printed number (OCR often drops it). Do NOT rely on a number
-   being present. Mark "q" whenever a NEW self-contained question begins — a fresh problem context that
-   does not continue the previous question. Signals of a new question: a new scenario/setup, a shift to
-   an unrelated topic or figure, a fresh "What is...?/Which...?/Find.../Calculate..." after the previous
-   question's answer space or options ended. This applies to multiple-choice, short-answer, structured,
-   and workbook questions alike. Never merge two separate questions into one entry, and never split one
-   question (its sub-parts (a),(b) stay inside the same "q") into several.
-3. Every block gets exactly one role, using the EXACT index shown in [brackets]. Preserve reading order.
-4. For "q" give "label" = the printed question number (digits only), or "" if none is printed.
-   For "part" give "label" = the part marker (e.g. "(a)"). For "option" give "label" = the option
-   key if visible (e.g. "A" or "1"), else "".
-
-OUTPUT: exactly ONE json array, one object per block, no other text:
-[{"i":0,"role":"section","label":"Section A"},{"i":1,"role":"q","label":"1"},{"i":2,"role":"body"},{"i":3,"role":"option","label":"A"}, ...]"""
-
-SYS_ANSWERS = """You are reading the ANSWER KEY of an exam paper. It was machine-OCR'd and may be laid out
-as a table, as double-column text linearized into one stream, or a mix; question numbers may be
-"1", "1.", or "Q1". Produce one clean record per numbered answer.
-
-For each answer:
-- "section": the section/part heading this answer falls under, if the key is grouped by section and the
-  numbering restarts per section — e.g. "Section A", "Paper 1", "Booklet B". Use "" if the key has no
-  section grouping. Carry the same heading forward until a new one appears. If a "CONTEXT:" line below
-  states the section already in effect (the heading is not repeated in this excerpt), use THAT heading
-  for the first answers until a new heading appears in the blocks.
-- "qno": question number as plain digits ("Q1" -> "1"). If an answer has NO printed number (OCR
-  dropped it), infer it from position — the next number after the previous answer.
-- "part": the sub-part this record answers, as printed — "(a)", "(b)(i)", "(ii)". Use "" when the
-  record covers the whole question. A key is often laid out with ONE ROW PER SUB-PART; emitting one
-  record per row is fine AS LONG AS every record carries its "qno" and its "part". A bare "(ii)"
-  belongs to the last lettered part seen, so report it as "(b)(ii)".
-- "answer": the final answer(s). For multiple-choice, the option key (A/B/C/D or 1-4). Otherwise the
-  final numeric/expression result. If you put a whole multi-part question in ONE record, label the
-  parts inline: "(a) $5$; (b)(i) $12\\,\\mathrm{N}$; (b)(ii) $3.0$" — never return just one part's
-  answer. Wrap latex in $...$. Use "" only if there is genuinely no final answer (a blank cell).
-  BEWARE: a key usually has a MARKS column — a lone small integer in its own narrow column is the
-  mark for that row, NOT the answer. Never report a mark as the answer.
-- "solution": the working/explanation, faithful to the source (do not invent), latex wrapped in $...$,
-  HTML <table> kept as-is. "" if none.
-- "figs": array of block indices [i] whose blocks are solution figures/diagrams for THIS answer (else []).
-
-Read EVERY block. Do not merge two answers, do not split one. OUTPUT exactly ONE json array, no other text:
-[{"section":"Section A","qno":"1","part":"","answer":"D","solution":"...","figs":[]}, {"section":"","qno":"11","part":"(b)(iii)","answer":"$120$","solution":"...","figs":[]}]
-"""
 
 
 def compact(blocks: list[dict]) -> str:
