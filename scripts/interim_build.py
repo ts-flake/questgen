@@ -598,6 +598,47 @@ def split_answer_area(text: str) -> tuple[str, str | None]:
 _ANS_MARK = re.compile(r"(?:\(\s*[A-Za-z]{1,3}\s*\)|\(\s*\d{1,2}\s*\)){1,3}")
 
 
+# A question's SHAPE is a fact about the entry: options make it a multiple-choice item,
+# labelled sub-parts make it a multi-part one. The NAME for that shape is the user's to
+# choose — `problem_types` is edited in Settings and may not contain an mcq-ish type at all
+# — so the shape is matched against the LIVE vocabulary and yields nothing when the user has
+# no word for it. Nothing here ever invents an id outside the vocabulary it was handed.
+SHAPE_WORDS = {
+    "mcq": ("mcq", "choice", "multiple", "select", "option", "选择"),
+    "structured": ("structured", "multipart", "multi_part", "subpart", "part", "结构", "多问"),
+}
+
+
+def entry_shape(entry: dict) -> str | None:
+    """'mcq' | 'structured' | None — what the entry's own structure proves, nothing more.
+
+    Options outrank parts, matching `kind` ("mcq" iff options, §1): an MCQ that happens to
+    carry sub-parts is still an MCQ."""
+    if entry.get("options"):
+        return "mcq"
+    if entry.get("parts"):
+        return "structured"
+    return None
+
+
+def structural_type(entry: dict, types) -> str | None:
+    """The id in `types` that names this entry's shape, or None when the shape proves nothing
+    or the vocabulary has no word for it. Exact id wins over a partial word match, so a
+    vocabulary holding both "mcq" and "mcq_hard" resolves to "mcq"."""
+    shape = entry_shape(entry)
+    if not shape:
+        return None
+    vocab = [str(t) for t in (types or ())]
+    for t in vocab:
+        if t.lower() == shape:
+            return t
+    for t in vocab:
+        low = t.lower()
+        if any(w in low for w in SHAPE_WORDS[shape]):
+            return t
+    return None
+
+
 def has_answer(entry: dict, field: str = "answer") -> bool:
     """True when the entry carries `field` at entry level or on any part (answers move onto
     the parts as soon as a question has sub-parts)."""

@@ -17,40 +17,7 @@ import context
 import bank
 import interim_build as ib
 import llm_clean
-
-GEN_SYS = """You are an exam question author for a school question bank. You are given REFERENCE
-questions and must write NEW ones on the same TARGET TOPICS.
-
-NOVELTY — this is the most important rule. The reference questions exist ONLY to calibrate style,
-format, difficulty and solution method. NEVER reuse their scenarios, contexts, characters, objects,
-settings or numbers, and never merely reword them. Every question you write must be set in a clearly
-DIFFERENT real-world situation from every reference AND from the other questions in this batch.
-Taking a reference and swapping its numbers is a FAILURE. If a reference is about ribbons, do not
-write about ribbons.
-
-DIVERSITY — the batch must be varied. Each question uses a distinct context and targets a DIFFERENT
-sub-skill / learning outcome of the topic; vary the quantities, the numeric ranges and the phrasing.
-No two questions in the batch may share a scenario or a near-identical structure.
-
-SOLUTIONS — write each solution in the SOLUTION STYLE given below, and MATCH the METHOD and the
-LENGTH of the reference solutions (if the references solve by a certain method, you use that method,
-not another). Show ONLY the final, clean steps a teacher would write. Do ALL reasoning/checking
-SILENTLY first; never include trial-and-error, self-correction, or meta-commentary ("let me try",
-"wait", "hmm", "let me check", "that's not nice"), and never restate or second-guess the question.
-Pick clean numbers up front so the answer is tidy. Keep it short.
-
-Output ONE JSON array; each element is a question object:
-{"stem": "the question text",
- "parts": [{"no":"(a)","text":"...","children":[{"no":"(i)","text":"..."},{"no":"(ii)","text":"..."}]},{"no":"(b)","text":"..."}],  // [] if none; nest sub-parts (i),(ii) under their parent via "children"
- "options": {"(1)":"...","(2)":"...","(3)":"...","(4)":"..."} or null,   // only for multiple-choice
- "answer": "final answer(s); an MCQ answer is its option label, e.g. '(3)'; for sub-parts label them e.g. '(a) $5$; (b) $9.4$'",
- "solution": "worked solution (or \\"\\" if solutions were not requested)",
- "type": "mcq|fill_blank|short_answer|structured|word_problem|true_false",
- "topics": ["<one or more ids taken from the TARGET TOPICS list this question covers>"]}
-
-Rules: wrap ALL mathematics in $...$. Use "parts" for labelled sub-parts (a),(b),(i)...; otherwise [].
-Use "options" ONLY for MCQ. Each question must be self-contained and solvable. "topics" MUST be a
-subset of the TARGET TOPICS ids. Output ONLY the JSON array — no prose, no markdown fences."""
+from prompts import GEN_SYS
 
 
 def example_of(r: dict) -> dict:

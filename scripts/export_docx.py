@@ -650,17 +650,21 @@ def add_options(cell, options: dict, fmt: str, dirs, sub):
 # within. Numbering stays continuous (1..N across the whole paper) so [QN]/figure refs and
 # the answers section line up with the question numbers.
 TYPE_ORDER = ["mcq", "true_false", "fill_blank", "short_answer", "word_problem", "structured"]
-TYPE_NAME = {"mcq": "Multiple Choice", "true_false": "True / False",
+TYPE_NAME = {"mcq": "Multiple Choice", "true_false": "True / False", "other": "Questions",
              "fill_blank": "Fill in the Blanks", "short_answer": "Short Answer",
              "word_problem": "Word Problems", "structured": "Structured Questions"}
 
 
 def entry_type(e: dict) -> str:
-    """Problem-type used for section grouping: the tag if present, else inferred from shape."""
+    """Problem-type used for section grouping: the tag if present, else the entry's shape
+    named in the live vocabulary (interim_build.structural_type), else a generic bucket so
+    every entry still lands in some section."""
     t = (e.get("tags") or {}).get("type")
     if t:
         return t
-    return "mcq" if e.get("options") else ("structured" if e.get("parts") else "short_answer")
+    import interim_build as ib
+    import llm_tag
+    return ib.structural_type(e, llm_tag.problem_types()) or "other"
 
 
 def entry_marks(e: dict):
